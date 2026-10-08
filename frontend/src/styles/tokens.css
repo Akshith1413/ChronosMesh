@@ -1,0 +1,93 @@
+/* ==========================================================================
+   ChronosMesh — "Chrono Pearl" design tokens
+   A light, glassy, iridescent system. Ink on paper, pearls on threads.
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* Ink & paper */
+  --ink: #15132b;
+  --ink-2: #47456a;
+  --ink-3: #7f7da1;
+  --ink-4: #b4b2cc;
+  --paper: #f6f5fb;
+  --paper-2: #eeecf8;
+  --snow: #ffffff;
+
+  /* Glass */
+  --glass: rgba(255, 255, 255, 0.64);
+  --glass-2: rgba(255, 255, 255, 0.84);
+  --glass-3: rgba(255, 255, 255, 0.4);
+  --line: rgba(21, 19, 43, 0.08);
+  --line-2: rgba(21, 19, 43, 0.14);
+
+  /* Iris — the brand gradient */
+  --iris-1: #6a4cff;
+  --iris-2: #2f9bff;
+  --iris-3: #14d1b0;
+  --iris: linear-gradient(118deg, #6a4cff 0%, #2f9bff 52%, #14d1b0 100%);
+  --iris-soft: linear-gradient(118deg, rgba(106, 76, 255, 0.14), rgba(47, 155, 255, 0.12) 52%, rgba(20, 209, 176, 0.14));
+
+  /* Semantic */
+  --ok: #0fb98a;
+  --warn: #f59f00;
+  --crit: #f0405f;
+  --info: #4c6ef5;
+  --mute: #8b89a8;
+  --ok-s: rgba(15, 185, 138, 0.12);
+  --warn-s: rgba(245, 159, 0, 0.14);
+  --crit-s: rgba(240, 64, 95, 0.12);
+  --info-s: rgba(76, 110, 245, 0.12);
+  --mute-s: rgba(139, 137, 168, 0.14);
+
+  /* Service hues */
+  --svc-order: #4c6ef5;
+  --svc-payment: #0fb98a;
+  --svc-inventory: #f59f00;
+  --svc-shipping: #8f4cf0;
+  --svc-notification: #e64980;
+
+  /* Elevation — tinted, never grey */
+  --sh-1: 0 1px 2px rgba(21, 19, 43, 0.04), 0 6px 16px -8px rgba(21, 19, 43, 0.12);
+  --sh-2: 0 2px 4px rgba(21, 19, 43, 0.04), 0 18px 40px -18px rgba(60, 40, 160, 0.26);
+  --sh-3: 0 4px 10px rgba(21, 19, 43, 0.05), 0 36px 90px -30px rgba(60, 40, 160, 0.4);
+
+  /* Shape */
+  --r-sm: 10px;
+  --r-md: 16px;
+  --r-lg: 24px;
+  --r-xl: 34px;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-io: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* Type */
+  --f-sans: 'Instrument Sans', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --f-serif: 'Instrument Serif', 'Iowan Old Style', Georgia, serif;
+  --f-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* Layout */
+  --dock-w: 76px;
+  --dock-w-open: 268px;
+  --gutter: 28px;
+
+  /* Legacy aliases (kept so nothing renders unthemed) */
+  --cm-bg-base: var(--paper);
+  --cm-bg-surface: #ffffff;
+  --cm-bg-surface-hover: var(--paper-2);
+  --cm-bg-elevated: #ffffff;
+  --cm-border-subtle: var(--line);
+  --cm-border-default: var(--line-2);
+  --cm-border-strong: var(--ink-4);
+  --cm-text-primary: var(--ink);
+  --cm-text-secondary: var(--ink-2);
+  --cm-text-muted: var(--ink-3);
+  --cm-accent: var(--iris-1);
+  --cm-success: var(--ok);
+  --cm-warning: var(--warn);
+  --cm-critical: var(--crit);
+  --cm-info: var(--info);
+}

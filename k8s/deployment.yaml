@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chronosmesh-api
+  labels:
+    app: chronosmesh
+    component: api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: chronosmesh
+      component: api
+  template:
+    metadata:
+      labels:
+        app: chronosmesh
+        component: api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: api
+          image: chronosmesh-api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: chronosmesh-config
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: chronosmesh-neo4j
+  labels:
+    app: chronosmesh
+    component: graph-db
+spec:
+  serviceName: neo4j-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chronosmesh
+      component: graph-db
+  template:
+    metadata:
+      labels:
+        app: chronosmesh
+        component: graph-db
+    spec:
+      containers:
+        - name: neo4j
+          image: neo4j:5.15-community
+          ports:
+            - containerPort: 7474
+              name: http
+            - containerPort: 7687
+              name: bolt
+          env:
+            - name: NEO4J_AUTH
+              value: "neo4j/chronosmesh2026"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"

@@ -1,0 +1,68 @@
+{
+  "type": "record",
+  "name": "EventAvro",
+  "namespace": "chronosmesh.events",
+  "doc": "ChronosMesh canonical distributed event schema for Kafka / Schema Registry",
+  "fields": [
+    { "name": "event_id", "type": "string", "doc": "UUID4 unique event ID" },
+    { "name": "service_id", "type": "string", "doc": "Originating microservice" },
+    { "name": "event_type", "type": "string", "doc": "Domain event type" },
+    { "name": "timestamp_ms", "type": "double", "doc": "Wall-clock timestamp in ms" },
+    { "name": "lamport_ts", "type": "long", "doc": "Lamport logical clock counter" },
+    {
+      "name": "vector_clock",
+      "type": {
+        "type": "map",
+        "values": "long"
+      },
+      "doc": "Vector clock mapping service -> counter"
+    },
+    {
+      "name": "hlc_ts",
+      "type": [
+        "null",
+        {
+          "type": "record",
+          "name": "HLCAvro",
+          "fields": [
+            { "name": "pt", "type": "double" },
+            { "name": "l", "type": "long" }
+          ]
+        }
+      ],
+      "default": null,
+      "doc": "Hybrid Logical Clock timestamp"
+    },
+    { "name": "trace_id", "type": "string", "doc": "Distributed trace ID" },
+    { "name": "span_id", "type": "string", "doc": "Span ID" },
+    {
+      "name": "parent_event_ids",
+      "type": {
+        "type": "array",
+        "items": "string"
+      },
+      "default": [],
+      "doc": "Direct causal predecessors"
+    },
+    { "name": "payload_json", "type": "string", "default": "{}", "doc": "Domain payload JSON" },
+    {
+      "name": "metadata",
+      "type": {
+        "type": "record",
+        "name": "EventMetadataAvro",
+        "fields": [
+          { "name": "region", "type": "string", "default": "unknown" },
+          { "name": "availability_zone", "type": "string", "default": "unknown" },
+          { "name": "clock_uncertainty_ms", "type": "double", "default": 5.0 },
+          {
+            "name": "tags",
+            "type": { "type": "map", "values": "string" },
+            "default": {}
+          }
+        ]
+      },
+      "doc": "Deployment and TrueTime uncertainty metadata"
+    },
+    { "name": "arrival_time_ms", "type": "double", "doc": "Ingestion wall-clock time" }
+  ]
+}

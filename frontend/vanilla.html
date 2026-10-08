@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ChronosMesh — Distributed Causality Engine</title>
+  <meta name="description"
+    content="ChronosMesh reconstructs true causal execution graphs from disordered distributed event streams using Lamport clocks, vector clocks, and hybrid logical clocks." />
+  <meta name="author" content="Guru Sai Prasad Reddy" />
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="/frontend/css/styles.css" />
+
+  <!-- D3.js v7 -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+  LANDING PAGE
+══════════════════════════════════════════════════════════════════════ -->
+<div id="landing-page">
+  <canvas id="star-canvas"></canvas>
+
+  <!-- Nav -->
+  <nav class="landing-nav">
+    <div class="logo">
+      <div class="logo-icon">⟳</div>
+      ChronosMesh
+    </div>
+    <div class="nav-links">
+      <a href="#problem">Problem</a>
+      <a href="#features">Features</a>
+      <a href="#architecture">Architecture</a>
+    </div>
+    <button class="btn btn-primary" onclick="openModal('login-modal')">
+      🔐 Open Dashboard
+    </button>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div>
+      <div class="hero-badge">
+        <span></span>
+        Cloud Computing PE-5 Project · ChronosMesh
+      </div>
+      <h1>
+        The Truth of<br/>
+        <span class="gradient-text">Distributed Causality</span>
+      </h1>
+      <p class="hero-sub">
+        <span id="hero-subtext">Reconstructs causal truth from disordered event streams.</span>
+      </p>
+      <div class="hero-cta">
+        <button class="btn btn-primary" onclick="openModal('login-modal')" style="font-size:15px;padding:14px 32px">
+          🚀 Launch Dashboard
+        </button>
+        <a href="#problem" class="btn btn-outline">See How It Works</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Problem / Solution -->
+  <section class="problem-strip" id="problem">
+    <div class="section-label">The Problem</div>
+    <h2 class="section-title">Events Arrive Out of Order. <span class="gradient-text">We Reconstruct the Truth.</span></h2>
+    <p class="section-sub">
+      Distributed microservices emit events that arrive shuffled by network latency and clock drift.
+      ChronosMesh ingests the chaos and builds the real causal graph.
+    </p>
+
+    <div class="problem-grid">
+      <div>
+        <p style="font-size:12px;font-weight:700;color:var(--c-red);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">❌ Arrival Order (Kafka)</p>
+        <div class="code-block bad">
+          <div class="line"><span class="num">5</span><span class="arrow-bad">→</span><span class="evt-name">STOCK_RESERVED</span></div>
+          <div class="line"><span class="num">4</span><span class="arrow-bad">→</span><span class="evt-name">PAYMENT_SUCCESS</span></div>
+          <div class="line"><span class="num">6</span><span class="arrow-bad">→</span><span class="evt-name">SHIPPING_START</span></div>
+          <div class="line"><span class="num">1</span><span class="arrow-bad">→</span><span class="evt-name">ORDER_CREATED</span></div>
+          <div class="line"><span class="num">3</span><span class="arrow-bad">→</span><span class="evt-name">STOCK_CHECK</span></div>
+          <div class="line"><span class="num">2</span><span class="arrow-bad">→</span><span class="evt-name">PAYMENT_START</span></div>
+          <div style="margin-top:10px;font-size:11px;color:var(--c-red)">Arrival order is nonsense. 🔴</div>
+        </div>
+      </div>
+
+      <div class="problem-arrow" style="text-align:center">
+        <div>⟶</div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:4px">ChronosMesh</div>
+      </div>
+
+      <div>
+        <p style="font-size:12px;font-weight:700;color:var(--c-emerald);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">✅ Causal Reconstruction</p>
+        <div class="code-block good">
+          <div class="line"><span class="num">1</span><span class="arrow-good">→</span><span class="evt-name">ORDER_CREATED</span><span class="evt-parent">(root)</span></div>
+          <div class="line"><span class="num">2</span><span class="arrow-good">→</span><span class="evt-name">PAYMENT_START</span><span class="evt-parent">← E1</span></div>
+          <div class="line"><span class="num">3</span><span class="arrow-good">→</span><span class="evt-name">STOCK_CHECK</span><span class="evt-parent">← E1 ∥ E2</span></div>
+          <div class="line"><span class="num">4</span><span class="arrow-good">→</span><span class="evt-name">PAYMENT_SUCCESS</span><span class="evt-parent">← E2</span></div>
+          <div class="line"><span class="num">5</span><span class="arrow-good">→</span><span class="evt-name">STOCK_RESERVED</span><span class="evt-parent">← E3</span></div>
+          <div class="line"><span class="num">6</span><span class="arrow-good">→</span><span class="evt-name">SHIPPING_START</span><span class="evt-parent">← E4,E5</span></div>
+          <div style="margin-top:10px;font-size:11px;color:var(--c-emerald)">Causal truth restored. 🟢</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="features-section" id="features">
+    <div class="section-label">What ChronosMesh Does</div>
+    <h2 class="section-title">Every Angle of Distributed Causality</h2>
+    <p class="section-sub">From raw disordered events to a full causal graph with anomaly detection, root-cause tracing, and what-if analysis.</p>
+
+    <div class="features-grid">
+      <div class="feature-card" style="--accent-color:#00d4ff">
+        <div class="feature-icon" style="background:rgba(0,212,255,0.1)">🕐</div>
+        <h3>Pluggable Clock Systems</h3>
+        <p>Lamport, Vector, and Hybrid Logical Clocks — all behind a swappable strategy interface for benchmarking and comparison.</p>
+      </div>
+      <div class="feature-card" style="--accent-color:#8b5cf6">
+        <div class="feature-icon" style="background:rgba(139,92,246,0.1)">🔗</div>
+        <h3>Causal DAG Reconstruction</h3>
+        <p>Computes happens-before relations, detects concurrency, builds a transitive-reduced DAG from any stream of out-of-order events.</p>
+      </div>
+      <div class="feature-card" style="--accent-color:#ef4444">
+        <div class="feature-icon" style="background:rgba(239,68,68,0.1)">⚡</div>
+        <h3>Anomaly Detection</h3>
+        <p>Flags time inversions, impossible causal cycles, duplicate events, and clock drift as first-class alerts — not just log noise.</p>
+      </div>
+      <div class="feature-card" style="--accent-color:#10b981">
+        <div class="feature-icon" style="background:rgba(16,185,129,0.1)">🔭</div>
+        <h3>Root-Cause Tracing</h3>
+        <p>Backward DAG traversal from any failure event to its root causes. Find the origin in a distributed system with one click.</p>
+      </div>
+      <div class="feature-card" style="--accent-color:#f59e0b">
+        <div class="feature-icon" style="background:rgba(245,158,11,0.1)">🎯</div>
+        <h3>What-If Blast Radius</h3>
+        <p>"If event X had NOT happened, what breaks?" Forward reachability analysis to compute the cascade depth and affected services.</p>
+      </div>
+      <div class="feature-card" style="--accent-color:#ec4899">
+        <div class="feature-icon" style="background:rgba(236,72,153,0.1)">📊</div>
+        <h3>Confidence-Scored Edges</h3>
+        <p>TrueTime-style probabilistic ordering using clock uncertainty intervals — statistical rigor beyond binary happens-before.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Architecture -->
+  <section class="architecture-section" id="architecture">
+    <div class="section-label">System Architecture</div>
+    <h2 class="section-title">Three-Layer Design</h2>
+    <p class="section-sub">Akshith's core engine feeds Surya's data infrastructure, exposed through Guru's API and dashboard.</p>
+
+    <div class="arch-diagram">
+      <div class="arch-layer">
+        <div class="arch-layer-label" style="color:var(--c-cyan)">🖥 Frontend</div>
+        <div class="arch-chips">
+          <span class="chip chip-cyan">D3.js DAG</span>
+          <span class="chip chip-cyan">Timeline Replay</span>
+          <span class="chip chip-cyan">Anomaly Center</span>
+          <span class="chip chip-cyan">What-If Lab</span>
+          <span class="chip chip-cyan">Clock Benchmark</span>
+          <span class="chip chip-cyan">JWT Auth</span>
+        </div>
+      </div>
+      <div class="arch-arrow">↕</div>
+      <div class="arch-layer">
+        <div class="arch-layer-label" style="color:var(--c-purple)">⚙ API Layer</div>
+        <div class="arch-chips">
+          <span class="chip chip-purple">FastAPI REST</span>
+          <span class="chip chip-purple">/api/dag</span>
+          <span class="chip chip-purple">/api/analysis</span>
+          <span class="chip chip-purple">/api/scenarios</span>
+          <span class="chip chip-purple">CORS + OAuth2</span>
+        </div>
+      </div>
+      <div class="arch-arrow">↕</div>
+      <div class="arch-layer">
+        <div class="arch-layer-label" style="color:var(--c-amber)">🧠 Core Engine</div>
+        <div class="arch-chips">
+          <span class="chip chip-amber">Vector Clocks</span>
+          <span class="chip chip-amber">CausalDAGBuilder</span>
+          <span class="chip chip-amber">AnomalyDetector</span>
+          <span class="chip chip-amber">WhatIfSimulator</span>
+          <span class="chip chip-amber">HLC</span>
+          <span class="chip chip-amber">NetworkX</span>
+        </div>
+      </div>
+      <div class="arch-arrow">↕</div>
+      <div class="arch-layer">
+        <div class="arch-layer-label" style="color:var(--c-emerald)">💾 Data Layer</div>
+        <div class="arch-chips">
+          <span class="chip chip-emerald">Neo4j (Surya)</span>
+          <span class="chip chip-emerald">Kafka / MSK</span>
+          <span class="chip chip-emerald">TimescaleDB</span>
+          <span class="chip chip-emerald">DynamoDB</span>
+          <span class="chip chip-gray">In-memory (demo)</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta-section">
+    <div class="hero-badge" style="margin-bottom:20px">
+      <span></span> Live Demo Available
+    </div>
+    <h2 style="font-size:36px;font-weight:800;margin-bottom:16px">
+      Ready to see <span class="gradient-text">causality in action?</span>
+    </h2>
+    <p style="color:var(--text-secondary);font-size:16px;margin-bottom:32px;max-width:480px;margin-left:auto;margin-right:auto">
+      Log in and load a pre-built microservice scenario. Watch ChronosMesh reconstruct the true causal order in real time.
+    </p>
+    <button class="btn btn-primary" style="font-size:16px;padding:14px 40px" onclick="openModal('login-modal')">
+      🚀 Open Dashboard Now
+    </button>
+  </section>
+
+  <!-- Footer -->
+  <footer class="landing-footer">
+    <div>
+      <strong>ChronosMesh</strong> — Cloud Computing PE-5 Project
+    </div>
+    <div style="display:flex;gap:24px">
+      <span>👨‍💻 Akshith — Core Engine</span>
+      <span>🏗 Surya — Infrastructure</span>
+      <span style="color:var(--c-cyan)">🖥 Guru — API &amp; Frontend</span>
+    </div>
+    <div>MIT License · 2024</div>
+  </footer>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+  LOGIN MODAL
+══════════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="login-modal" onclick="if(event.target===this)closeModal('login-modal')">
+  <div class="modal-card">
+    <button class="modal-close" onclick="closeModal('login-modal')">✕</button>
+    <div class="modal-logo">
+      <div class="logo" style="justify-content:center;font-size:22px">
+        <div class="logo-icon">⟳</div> ChronosMesh
+      </div>
+    </div>
+    <h2 class="modal-title">Sign In</h2>
+    <p class="modal-sub">Access the causality dashboard</p>
+
+    <div class="error-msg" id="login-error"></div>
+
+    <form id="login-form">
+      <div class="form-group">
+        <label class="form-label" for="login-username">Username</label>
+        <input class="form-input" id="login-username" type="text" placeholder="guru" autocomplete="username" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="login-password">Password</label>
+        <input class="form-input" id="login-password" type="password" placeholder="••••••••" autocomplete="current-password" required />
+      </div>
+      <button class="btn btn-primary" id="login-btn" type="submit" style="width:100%;justify-content:center;margin-top:8px">
+        🔐 Sign In
+      </button>
+    </form>
+
+    <div class="form-hint">
+      <div>
+        <div style="font-weight:600;margin-bottom:4px">Demo Credentials</div>
+        <div>Admin: <strong>guru</strong> / <strong>chronosmesh</strong></div>
+        <div>Viewer: <strong>demo</strong> / <strong>demo123</strong></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+  APP SHELL — Dashboard
+══════════════════════════════════════════════════════════════════════ -->
+<div id="app-shell" style="display:none" class="app-layout">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">
+        <div class="logo-icon">⟳</div>
+        ChronosMesh
+      </div>
+    </div>
+
+    <div class="sidebar-scenario">
+      <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">Current Scenario</div>
+      <div class="scenario-badge" id="scenario-badge" style="display:none">
+        <span>●</span>
+        <span id="current-scenario">—</span>
+      </div>
+      <div id="no-scenario" style="font-size:11px;color:var(--text-muted);margin-top:6px">None loaded</div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Main</div>
+      <button class="nav-item active" data-view="overview">
+        <span class="nav-icon">📊</span> Overview
+      </button>
+      <button class="nav-item" data-view="dag">
+        <span class="nav-icon">🔗</span> Causal DAG
+      </button>
+      <button class="nav-item" data-view="timeline">
+        <span class="nav-icon">⏱</span> Timeline Replay
+      </button>
+
+      <div class="nav-section-label" style="margin-top:16px">Analysis</div>
+      <button class="nav-item" data-view="anomaly">
+        <span class="nav-icon">⚡</span> Anomaly Center
+        <span class="nav-badge" id="anomaly-badge">0</span>
+      </button>
+      <button class="nav-item" data-view="whatif">
+        <span class="nav-icon">🎯</span> What-If Lab
+      </button>
+      <button class="nav-item" data-view="benchmark">
+        <span class="nav-icon">📈</span> Clock Benchmark
+      </button>
+
+      <div class="nav-section-label" style="margin-top:16px">Reference</div>
+      <button class="nav-item" data-view="docs">
+        <span class="nav-icon">📖</span> Architecture Docs
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="user-card">
+        <div class="user-avatar" id="user-avatar">G</div>
+        <div class="user-info">
+          <div class="user-name" id="user-name">Guru</div>
+          <div class="user-role" id="user-role">admin</div>
+        </div>
+        <button class="logout-btn" id="logout-btn" title="Logout">⏻</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main Area ── -->
+  <main class="main-area">
+
+    <!-- Top bar -->
+    <header class="top-bar">
+      <div>
+        <div class="page-title"  id="page-title">Overview</div>
+        <div class="page-subtitle" id="page-subtitle">Select a scenario to begin analysis</div>
+      </div>
+      <div class="top-bar-actions">
+        <div class="status-dot" title="API Connected"></div>
+        <span style="font-size:12px;color:var(--text-muted)">Live</span>
+        <button class="btn btn-ghost btn-sm" onclick="loadMetrics()">↻ Refresh</button>
+        <a href="http://localhost:8000/api/docs" target="_blank" class="btn btn-outline btn-sm">API Docs</a>
+      </div>
+    </header>
+
+    <!-- ─── OVERVIEW VIEW ─── -->
+    <div id="overview-view" class="view active">
+
+      <!-- Stats row -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon" style="background:rgba(0,212,255,0.1)">📨</div>
+          <div>
+            <div class="stat-value" id="stat-events" style="color:var(--c-cyan)">0</div>
+            <div class="stat-label">Events Loaded</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:rgba(139,92,246,0.1)">⬤</div>
+          <div>
+            <div class="stat-value" id="stat-nodes" style="color:var(--c-purple)">0</div>
+            <div class="stat-label">DAG Nodes</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:rgba(245,158,11,0.1)">🔗</div>
+          <div>
+            <div class="stat-value" id="stat-edges" style="color:var(--c-amber)">0</div>
+            <div class="stat-label">Causal Edges</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:rgba(16,185,129,0.1)">🌐</div>
+          <div>
+            <div class="stat-value" id="stat-services" style="color:var(--c-emerald)">0</div>
+            <div class="stat-label">Services</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scenario selector -->
+      <p style="font-size:13px;font-weight:700;margin-bottom:16px;color:var(--text-secondary)">
+        ▸ Load a demo scenario to begin:
+      </p>
+      <div class="scenario-selector">
+        <div class="scenario-card" data-scenario="order_payment_flow" onclick="loadScenario('order_payment_flow')">
+          <div class="scenario-pattern-badge" style="background:rgba(0,212,255,0.1);border:1px solid rgba(0,212,255,0.3);color:var(--c-cyan)">
+            ⛓ chain
+          </div>
+          <h3>Order → Payment → Inventory → Shipping</h3>
+          <p>Linear causal chain across 4 microservices. Classic e-commerce fulfillment pipeline.</p>
+          <div class="scenario-meta">
+            <span>~8 events</span>
+            <span>4 services</span>
+            <span>aws-mumbai</span>
+          </div>
+        </div>
+
+        <div class="scenario-card" data-scenario="concurrent_branches" onclick="loadScenario('concurrent_branches')">
+          <div class="scenario-pattern-badge" style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);color:var(--c-emerald)">
+            ⑃ fork
+          </div>
+          <h3>Concurrent Payment + Inventory</h3>
+          <p>Order service triggers two branches in parallel. Demonstrates concurrency detection (E₂ ∥ E₃).</p>
+          <div class="scenario-meta">
+            <span>~3 events</span>
+            <span>3 services</span>
+            <span>multi-region</span>
+          </div>
+        </div>
+
+        <div class="scenario-card" data-scenario="diamond_pattern" onclick="loadScenario('diamond_pattern')">
+          <div class="scenario-pattern-badge" style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);color:var(--c-amber)">
+            ◆ diamond
+          </div>
+          <h3>Diamond (Fork + Join)</h3>
+          <p>ROOT → (Branch A ∥ Branch B) → JOIN. Classic DAG with concurrent branches merging at a sync point.</p>
+          <div class="scenario-meta">
+            <span>~4 events</span>
+            <span>4 services</span>
+            <span>gcp-singapore</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Event feed -->
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">📨 Causal Event Feed</div>
+          </div>
+          <div class="event-feed" id="event-feed">
+            <div class="empty-state" style="padding:32px">
+              <div class="icon">📭</div>
+              <p>Load a scenario to see events</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">🔑 Quick Start</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;gap:10px;align-items:flex-start">
+              <div style="width:24px;height:24px;border-radius:50%;background:rgba(0,212,255,0.2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--c-cyan);flex-shrink:0">1</div>
+              <div><div style="font-size:13px;font-weight:600">Load a Scenario</div><div style="font-size:12px;color:var(--text-muted)">Click any scenario card above to reconstruct its causal DAG</div></div>
+            </div>
+            <div style="display:flex;gap:10px;align-items:flex-start">
+              <div style="width:24px;height:24px;border-radius:50%;background:rgba(139,92,246,0.2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--c-purple);flex-shrink:0">2</div>
+              <div><div style="font-size:13px;font-weight:600">Explore the DAG</div><div style="font-size:12px;color:var(--text-muted)">Click nodes to inspect vector clocks and confidence scores</div></div>
+            </div>
+            <div style="display:flex;gap:10px;align-items:flex-start">
+              <div style="width:24px;height:24px;border-radius:50%;background:rgba(239,68,68,0.2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--c-red);flex-shrink:0">3</div>
+              <div><div style="font-size:13px;font-weight:600">Detect Anomalies</div><div style="font-size:12px;color:var(--text-muted)">Head to Anomaly Center to see causal violations</div></div>
+            </div>
+            <div style="display:flex;gap:10px;align-items:flex-start">
+              <div style="width:24px;height:24px;border-radius:50%;background:rgba(245,158,11,0.2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--c-amber);flex-shrink:0">4</div>
+              <div><div style="font-size:13px;font-weight:600">Run What-If Analysis</div><div style="font-size:12px;color:var(--text-muted)">Remove an event and see the cascade in the What-If Lab</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── DAG VIEW ─── -->
+    <div id="dag-view" class="view" style="display:none;flex-direction:column;padding:0;height:calc(100vh - 64px)">
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 20px;background:var(--bg-secondary);border-bottom:1px solid var(--border-glass)">
+        <div class="dag-toolbar" style="position:static">
+          <button class="btn btn-ghost btn-sm" onclick="DAGViz.render(State.dagData)" title="Re-render">↻ Redraw</button>
+          <button class="btn btn-ghost btn-sm" onclick="Charts.renderConfidence()" title="Load confidence">🎯 Confidence</button>
+        </div>
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <span class="chip chip-cyan">Zoom: scroll wheel</span>
+          <span class="chip chip-gray">Pan: drag</span>
+          <span class="chip chip-purple">Click node: inspect</span>
+        </div>
+      </div>
+
+      <div class="dag-layout" style="flex:1;overflow:hidden">
+        <div class="dag-canvas-wrap" id="dag-svg-container" style="position:relative;overflow:hidden">
+          <div class="dag-empty" id="dag-empty" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text-muted)">
+            <div class="empty-icon" style="font-size:64px;opacity:.2">🕸</div>
+            <p>Load a scenario from Overview to visualize the causal DAG</p>
+            <button class="btn btn-outline btn-sm" style="margin-top:12px" onclick="switchView('overview')">← Go to Overview</button>
+          </div>
+          <div class="dag-legend" id="dag-legend" style="position:absolute;bottom:16px;left:16px;display:flex;flex-wrap:wrap;gap:10px;z-index:5"></div>
+        </div>
+
+        <div class="dag-detail-panel">
+          <h3>NODE INSPECTOR</h3>
+          <div id="dag-detail-content">
+            <div class="detail-empty">
+              <div style="font-size:32px;margin-bottom:8px;opacity:.3">🔍</div>
+              <p>Click a node in the DAG to inspect its clock data, vector clocks, and causal links.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── TIMELINE VIEW ─── -->
+    <div id="timeline-view" class="view" style="padding:0;display:flex;flex-direction:column">
+      <div class="timeline-controls" id="timeline-controls">
+        <button class="play-btn" id="play-btn" onclick="Timeline.play()" title="Play/Pause">▶</button>
+        <input type="range" class="step-slider" id="timeline-slider" min="0" max="10" value="10" style="flex:1" />
+        <span id="step-count" style="font-size:12px;color:var(--text-secondary);white-space:nowrap">Step 0 / 0</span>
+        <button class="btn btn-ghost btn-sm" onclick="Timeline.reset()">↺ Reset</button>
+      </div>
+
+      <div id="timeline-empty" class="empty-state" style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1">
+        <div class="icon">⏱</div>
+        <h3>No events to replay</h3>
+        <p>Load a scenario from Overview first</p>
+        <button class="btn btn-outline btn-sm" onclick="switchView('overview')">← Go to Overview</button>
+      </div>
+
+      <div id="timeline-content" class="timeline-tracks" style="display:none">
+        <div>
+          <div class="track-label" style="color:var(--c-red)">📨 Arrival Order (Network / Kafka)</div>
+          <div class="track" id="arrival-track"></div>
+        </div>
+        <div class="divider"></div>
+        <div>
+          <div class="track-label" style="color:var(--c-emerald)">🔗 Reconstructed Causal Order (ChronosMesh)</div>
+          <div class="track" id="causal-track"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── ANOMALY VIEW ─── -->
+    <div id="anomaly-view" class="view">
+      <div class="anomaly-summary">
+        <div class="anomaly-stat total">
+          <div class="count" id="total-anomalies">0</div>
+          <div class="label">Total Detected</div>
+        </div>
+        <div class="anomaly-stat critical">
+          <div class="count" id="critical-anomalies">0</div>
+          <div class="label">Critical</div>
+        </div>
+        <div class="anomaly-stat warning">
+          <div class="count" id="warning-anomalies">0</div>
+          <div class="label">Warning</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">⚡ Detected Anomalies</div>
+          <button class="btn btn-outline btn-sm" onclick="loadAnomalies()">↻ Rescan</button>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="anomaly-table">
+            <thead>
+              <tr>
+                <th>Severity</th>
+                <th>Type</th>
+                <th>Description</th>
+                <th>Source Event</th>
+                <th>Target Event</th>
+              </tr>
+            </thead>
+            <tbody id="anomaly-tbody">
+              <tr><td colspan="5">
+                <div class="empty-state" style="padding:32px">
+                  <div class="icon">🔍</div>
+                  <h3>Load a scenario first</h3>
+                  <p>Then click Rescan to detect anomalies</p>
+                </div>
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── WHAT-IF VIEW ─── -->
+    <div id="whatif-view" class="view">
+      <div class="whatif-layout">
+        <div>
+          <div class="card" style="margin-bottom:20px">
+            <div class="card-title" style="margin-bottom:16px">🎯 Remove an Event</div>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">
+              Select an event below and simulate its removal from the causal graph.
+              ChronosMesh will compute which downstream events are <span style="color:var(--c-red)">invalidated</span>
+              and which <span style="color:var(--c-emerald)">survive</span>.
+            </p>
+            <div class="form-group">
+              <label class="form-label">Event to Remove</label>
+              <select class="event-selector" id="whatif-event-select">
+                <option>Load a scenario first</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" onclick="runWhatIf()" style="width:100%;justify-content:center">
+              🎯 Simulate Removal
+            </button>
+          </div>
+
+          <div class="card">
+            <div class="card-title" style="margin-bottom:16px">📋 Cascade Results</div>
+            <div class="detail-kv">
+              <div class="detail-row"><span class="detail-key">Cascade Depth</span><span class="detail-val" id="cascade-depth">—</span></div>
+              <div class="detail-row"><span class="detail-key">Affected Services</span><span class="detail-val" id="affected-services">—</span></div>
+            </div>
+            <div class="divider"></div>
+            <div class="invalidated-list" id="invalidated-list">
+              <div style="color:var(--text-muted);font-size:12px;text-align:center;padding:20px">
+                Run a simulation to see results
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="text-align:center">
+          <div class="card-title" style="margin-bottom:20px;justify-content:center">💥 Blast Radius</div>
+          <div class="blast-gauge" id="blast-gauge">
+            <div class="gauge-circle" id="blast-gauge-circle">
+              <div class="gauge-value" id="blast-pct">0%</div>
+            </div>
+            <p style="color:var(--text-secondary);font-size:13px">
+              Fraction of all events that would be<br/>invalidated by this removal
+            </p>
+          </div>
+          <div style="margin-top:32px">
+            <p style="font-size:12px;color:var(--text-muted);line-height:1.6">
+              An event is <span style="color:var(--c-red)">invalidated</span> if ALL its
+              causal parents are removed. It <span style="color:var(--c-emerald)">survives</span>
+              if at least one parent remains.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── BENCHMARK VIEW ─── -->
+    <div id="benchmark-view" class="view">
+      <div class="benchmark-controls">
+        <div class="ctrl-group">
+          <label class="ctrl-label">Packet Loss (%)</label>
+          <input class="ctrl-input" id="packet-loss-input" type="number" value="0" min="0" max="100" step="5" />
+        </div>
+        <div class="ctrl-group">
+          <label class="ctrl-label">Clock Drift (ms)</label>
+          <input class="ctrl-input" id="clock-drift-input" type="number" value="0" min="0" max="1000" step="50" />
+        </div>
+        <button class="btn btn-primary" onclick="runBenchmark()">▶ Run Benchmark</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('packet-loss-input').value=20;document.getElementById('clock-drift-input').value=100;runBenchmark()">📡 Simulate Network Issues</button>
+      </div>
+
+      <div class="strategy-cards">
+        <div class="strategy-card" id="strategy-vector-clock">
+          <div class="winner-crown">👑</div>
+          <div class="s-name" style="color:var(--c-cyan)">Vector Clocks</div>
+          <div class="s-sub">O(N) space — exact causality</div>
+          <div class="s-acc">—</div>
+          <div class="accuracy-bar-wrap">
+            <div class="accuracy-bar" style="width:0%;background:var(--c-cyan)"></div>
+          </div>
+        </div>
+        <div class="strategy-card" id="strategy-lamport-clock">
+          <div class="winner-crown">👑</div>
+          <div class="s-name" style="color:var(--c-purple)">Lamport Clocks</div>
+          <div class="s-sub">O(1) space — total order only</div>
+          <div class="s-acc">—</div>
+          <div class="accuracy-bar-wrap">
+            <div class="accuracy-bar" style="width:0%;background:var(--c-purple)"></div>
+          </div>
+        </div>
+        <div class="strategy-card" id="strategy-physical-time">
+          <div class="winner-crown">👑</div>
+          <div class="s-name" style="color:var(--c-amber)">Physical Time</div>
+          <div class="s-sub">Unreliable — clock skew prone</div>
+          <div class="s-acc">—</div>
+          <div class="accuracy-bar-wrap">
+            <div class="accuracy-bar" style="width:0%;background:var(--c-amber)"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="chart-wrap">
+          <div class="card-title" style="margin-bottom:16px">📊 Accuracy + Memory Comparison</div>
+          <div style="height:280px;position:relative">
+            <canvas id="benchmark-chart"></canvas>
+          </div>
+        </div>
+        <div class="chart-wrap">
+          <div class="card-title" style="margin-bottom:8px">🎯 Confidence Score Distribution</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
+            Avg: <span id="avg-confidence" style="color:var(--c-cyan);font-weight:700">—</span>
+          </div>
+          <div style="height:240px;position:relative">
+            <canvas id="confidence-chart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── DOCS VIEW ─── -->
+    <div id="docs-view" class="view">
+      <div class="docs-layout">
+        <div class="docs-toc">
+          <h4>Contents</h4>
+          <a class="toc-item" href="#doc-overview">Overview</a>
+          <a class="toc-item" href="#doc-api">API Reference</a>
+          <a class="toc-item" href="#doc-auth">Authentication</a>
+          <a class="toc-item" href="#doc-clocks">Clock Systems</a>
+          <a class="toc-item" href="#doc-dag">Causal DAG</a>
+          <a class="toc-item" href="#doc-analysis">Analysis</a>
+          <a class="toc-item" href="#doc-deploy">Deployment</a>
+        </div>
+
+        <div class="docs-content">
+
+          <div class="docs-section" id="doc-overview">
+            <h2>📖 ChronosMesh — GURU Layer</h2>
+            <p>
+              This document covers the <strong>API layer and frontend dashboard</strong> built by
+              Guru Sai Prasad Reddy as part of the ChronosMesh Cloud Computing project.
+            </p>
+            <p>
+              The Guru layer sits between Akshith's core algorithm engine and the end user, exposing
+              all reconstruction, analysis, and benchmarking capabilities through a clean REST API
+              and an interactive web dashboard.
+            </p>
+
+            <h3>Design Principles</h3>
+            <ul>
+              <li>Clean API contract so Surya's Neo4j/Kafka layer can be swapped in without touching frontend code</li>
+              <li>JWT authentication with role-based access (admin / viewer)</li>
+              <li>In-memory store for demo mode — production-ready interface for future DB integration</li>
+              <li>All visualisations driven by live API calls — no static mock data in production mode</li>
+            </ul>
+          </div>
+
+          <div class="docs-section" id="doc-api">
+            <h2>🔌 API Reference</h2>
+            <p>All endpoints require a valid JWT token in the <code>Authorization: Bearer &lt;token&gt;</code> header (except <code>POST /auth/login</code>).</p>
+
+            <h3>Authentication</h3>
+            <table class="api-table">
+              <thead><tr><th>Method</th><th>Endpoint</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><span class="method-badge method-post">POST</span></td><td class="endpoint-path">/auth/login</td><td>Obtain JWT token (form data: username + password)</td></tr>
+                <tr><td><span class="method-badge method-get">GET</span></td><td class="endpoint-path">/auth/me</td><td>Get current authenticated user</td></tr>
+              </tbody>
+            </table>
+
+            <h3>Scenarios</h3>
+            <table class="api-table">
+              <thead><tr><th>Method</th><th>Endpoint</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><span class="method-badge method-get">GET</span></td><td class="endpoint-path">/api/scenarios/</td><td>List available demo scenarios</td></tr>
+                <tr><td><span class="method-badge method-post">POST</span></td><td class="endpoint-path">/api/scenarios/{name}/load</td><td>Load scenario — returns DAG + event orders</td></tr>
+                <tr><td><span class="method-badge method-del">DEL</span></td><td class="endpoint-path">/api/scenarios/</td><td>Clear all loaded events</td></tr>
+              </tbody>
+            </table>
+
+            <h3>Events</h3>
+            <table class="api-table">
+              <thead><tr><th>Method</th><th>Endpoint</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><span class="method-badge method-get">GET</span></td><td class="endpoint-path">/api/events/</td><td>All events in emission order</td></tr>
+                <tr><td><span class="method-badge method-get">GET</span></td><td class="endpoint-path">/api/events/arrival</td><td>Events in simulated arrival (Kafka) order</td></tr>
+                <tr><td><span class="method-badge method-get">GET</span></td><td class="endpoint-path">/api/events/causal</td><td>Events in reconstructed causal order</td></tr>
+                <tr><td><span class="method-badge method-get">GET</span></td><td class="endpoint-path">/api/events/{id}</td><td>Single event by ID</td></tr>
+              </tbody>
+            </table>
+
+            <h3>Causal DAG</h3>
+            <table class="api-table">
+              <thead><tr><th>Method</th><th>Endpoint</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><span class="method-badge method-get">GET</span></td><td class="endpoint-path">/api/dag/</td><td>Full DAG as node/edge JSON for D3.js</td></tr>
+                <tr><td><span class="method-badge method-get">GET</span></td><td class="endpoint-path">/api/dag/roots</td><td>Root events (no causal parents)</td></tr>
+                <tr><td><span class="method-badge method-get">GET</span></td><td class="endpoint-path">/api/dag/timeline</td><td>Topological causal ordering</td></tr>
+                <tr><td><span class="method-badge method-get">GET</span></td><td class="endpoint-path">/api/dag/ancestors/{id}</td><td>All causal ancestors of an event</td></tr>
+                <tr><td><span class="method-badge method-get">GET</span></td><td class="endpoint-path">/api/dag/descendants/{id}</td><td>All causal descendants</td></tr>
+              </tbody>
+            </table>
+
+            <h3>Analysis</h3>
+            <table class="api-table">
+              <thead><tr><th>Method</th><th>Endpoint</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><span class="method-badge method-get">GET</span></td><td class="endpoint-path">/api/analysis/anomalies</td><td>Detect causal anomalies (cycles, inversions, duplicates)</td></tr>
+                <tr><td><span class="method-badge method-get">GET</span></td><td class="endpoint-path">/api/analysis/confidence</td><td>TrueTime-style edge confidence scores</td></tr>
+                <tr><td><span class="method-badge method-get">GET</span></td><td class="endpoint-path">/api/analysis/rootcause/{id}</td><td>Root-cause trace to a failure event</td></tr>
+                <tr><td><span class="method-badge method-post">POST</span></td><td class="endpoint-path">/api/analysis/whatif/{id}</td><td>Blast radius simulation for event removal</td></tr>
+                <tr><td><span class="method-badge method-get">GET</span></td><td class="endpoint-path">/api/analysis/benchmark</td><td>Clock strategy benchmark (Lamport vs Vector vs HLC)</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="docs-section" id="doc-auth">
+            <h2>🔐 Authentication</h2>
+            <p>ChronosMesh uses JWT (JSON Web Tokens) with bcrypt password hashing.</p>
+            <div class="docs-code">
+<span class="cmt"># Login — returns access_token</span>
+<span class="kw">curl</span> -X POST <span class="str">http://localhost:8000/auth/login</span> \
+  -d <span class="str">"username=guru&password=chronosmesh"</span>
+
+<span class="cmt"># Use token in subsequent requests</span>
+<span class="kw">curl</span> <span class="str">http://localhost:8000/api/dag/</span> \
+  -H <span class="str">"Authorization: Bearer &lt;token&gt;"</span>
+            </div>
+            <p>Tokens expire after <strong>24 hours</strong>. The demo supports two users:</p>
+            <ul>
+              <li><code>guru / chronosmesh</code> — admin role (full access)</li>
+              <li><code>demo / demo123</code> — viewer role (read-only)</li>
+            </ul>
+          </div>
+
+          <div class="docs-section" id="doc-clocks">
+            <h2>🕐 Clock Systems</h2>
+            <p>Three clock strategies are implemented in Akshith's engine and exposed through the benchmark API:</p>
+
+            <h3>1. Lamport Clocks</h3>
+            <p>Scalar counter establishing a total order: <code>a → b ⟹ L(a) &lt; L(b)</code>. Cannot detect concurrency.</p>
+
+            <h3>2. Vector Clocks</h3>
+            <p>Per-node counter vectors: <code>a → b ⟺ V(a) &lt; V(b)</code> (element-wise ≤, at least one &lt;). Can detect <code>a ∥ b</code>.</p>
+
+            <h3>3. Hybrid Logical Clocks (HLC)</h3>
+            <p>Combines physical time with logical counter. O(1) space vs O(N) for vector clocks. Bounded drift detection.</p>
+          </div>
+
+          <div class="docs-section" id="doc-dag">
+            <h2>🔗 Causal DAG Construction</h2>
+            <p>The reconstructed DAG is a <strong>directed acyclic graph</strong> where:</p>
+            <ul>
+              <li>Each node represents a distributed system event</li>
+              <li>Edge A → B means A causally precedes B (happens-before)</li>
+              <li>Concurrent events (∥) have no edge between them</li>
+              <li>The DAG undergoes transitive reduction to show only minimal edges</li>
+            </ul>
+            <div class="docs-code">
+<span class="cmt"># Example DAG JSON response</span>
+{
+  <span class="str">"nodes"</span>: [{ <span class="str">"id"</span>: <span class="str">"abc123"</span>, <span class="str">"event_type"</span>: <span class="str">"ORDER_CREATED"</span>,
+               <span class="str">"service_id"</span>: <span class="str">"order-svc"</span>, <span class="str">"lamport_ts"</span>: 1, ... }],
+  <span class="str">"edges"</span>: [{ <span class="str">"source"</span>: <span class="str">"abc123"</span>, <span class="str">"target"</span>: <span class="str">"def456"</span>, <span class="str">"explicit"</span>: <span class="kw">true</span> }],
+  <span class="str">"topological_order"</span>: [<span class="str">"abc123"</span>, <span class="str">"def456"</span>, ...],
+  <span class="str">"roots"</span>: [<span class="str">"abc123"</span>]
+}
+            </div>
+          </div>
+
+          <div class="docs-section" id="doc-deploy">
+            <h2>🚀 Deployment</h2>
+            <h3>Local Development</h3>
+            <div class="docs-code">
+<span class="cmt"># Install API dependencies</span>
+<span class="kw">cd</span> ChronosMesh
+<span class="fn">pip</span> install -r api/requirements.txt
+
+<span class="cmt"># Start the API server</span>
+<span class="fn">python</span> -m uvicorn api.main:app --reload --port 8000
+
+<span class="cmt"># Open the dashboard</span>
+<span class="kmt">open</span> <span class="str">http://localhost:8000</span>
+            </div>
+
+            <h3>Docker</h3>
+            <div class="docs-code">
+<span class="kw">docker-compose</span> -f docker-compose.guru.yml up --build
+            </div>
+
+            <h3>API Documentation</h3>
+            <p>Interactive Swagger UI is available at <a href="http://localhost:8000/api/docs" target="_blank" style="color:var(--c-cyan)">http://localhost:8000/api/docs</a></p>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- Scripts -->
+<script src="/frontend/js/landing.js"></script>
+<script src="/frontend/js/app.js"></script>
+<script src="/frontend/js/dag-viz.js"></script>
+<script src="/frontend/js/timeline.js"></script>
+<script src="/frontend/js/charts.js"></script>
+
+<script>
+  // Wire up DAG view active class (flex layout)
+  const origSwitch = window.switchView;
+  window.switchView = function(name) {
+    origSwitch(name);
+    const dagView = document.getElementById('dag-view');
+    if (name === 'dag') {
+      dagView.style.display = 'flex';
+      dagView.classList.add('active');
+    } else {
+      dagView.style.display = 'none';
+      dagView.classList.remove('active');
+    }
+    const timelineView = document.getElementById('timeline-view');
+    if (name === 'timeline') {
+      timelineView.style.display = 'flex';
+      timelineView.classList.add('active');
+      Timeline.init();
+    }
+  };
+
+  // Benchmark: auto-load confidence chart when tab is opened
+  document.querySelector('[data-view="benchmark"]').addEventListener('click', () => {
+    setTimeout(() => { if (window.State.dagData) Charts.renderConfidence(); }, 300);
+  });
+</script>
+
+</body>
+</html>

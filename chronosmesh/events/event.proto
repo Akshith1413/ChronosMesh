@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package chronosmesh.events;
+
+option go_package = "chronosmesh/events";
+option java_package = "com.chronosmesh.events";
+
+// Event metadata containing cloud deployment and TrueTime uncertainty bounds
+message EventMetadata {
+  string region = 1;                     // e.g., "aws-mumbai", "gcp-singapore"
+  string availability_zone = 2;          // e.g., "ap-south-1a"
+  double clock_uncertainty_ms = 3;       // TrueTime-style clock uncertainty epsilon bound
+  map<string, string> tags = 4;          // Service/deployment labels
+}
+
+// Hybrid Logical Clock (HLC) timestamp
+message HLCTimestamp {
+  double pt = 1;                         // Physical time component (epoch seconds)
+  int64 l = 2;                           // Logical counter component
+}
+
+// Core ChronosMesh distributed event carrying vector and logical clock state
+message EventProto {
+  string event_id = 1;                   // UUID4 globally unique identifier
+  string service_id = 2;                 // Emitting microservice identifier (e.g., "order-svc")
+  string event_type = 3;                 // Domain event action (e.g., "ORDER_CREATED")
+  double timestamp_ms = 4;               // Physical wall-clock epoch timestamp (subject to skew)
+  int64 lamport_ts = 5;                  // Lamport logical counter at emission
+  map<string, int64> vector_clock = 6;   // Vector clock mapping {service_id -> counter}
+  HLCTimestamp hlc_ts = 7;               // Optional Hybrid Logical Clock representation
+  string trace_id = 8;                   // Distributed trace identifier
+  string span_id = 9;                    // Distributed span identifier
+  repeated string parent_event_ids = 10; // Explicit causal predecessors
+  string payload_json = 11;              // Serialized domain payload (JSON)
+  EventMetadata metadata = 12;           // Multi-cloud metadata
+  double arrival_time_ms = 13;           // Ingestion epoch ms (monotonic)
+}
+
+// Batch of events for high-throughput streaming
+message EventBatchProto {
+  repeated EventProto events = 1;
+}
+
+// Ingestion acknowledgement response
+message IngestResponse {
+  bool success = 1;
+  int32 accepted_count = 2;
+  repeated string rejected_event_ids = 3;
+  string message = 4;
+}
+
+// Causal ancestry query request
+message AncestryQueryRequest {
+  string trace_id = 1;
+  string event_id = 2;
+  int32 max_depth = 3;
+}
+
+// Causal ancestry query response
+message AncestryQueryResponse {
+  string event_id = 1;
+  repeated EventProto ancestors = 2;
+  repeated string causal_path = 3;
+}
+
+// gRPC Service for distributed event emission and causal graph inspection
+service ChronosMeshEventService {
+  rpc EmitEvent (EventProto) returns (IngestResponse);
+  rpc EmitEventBatch (EventBatchProto) returns (IngestResponse);
+  rpc QueryAncestors (AncestryQueryRequest) returns (AncestryQueryResponse);
+}

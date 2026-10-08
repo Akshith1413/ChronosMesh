@@ -1,0 +1,56 @@
+groups:
+  - name: chronosmesh_alerts
+    rules:
+      - alert: ChronosMeshApiHighLatency
+        expr: histogram_quantile(0.95, sum(rate(chronosmesh_api_request_duration_seconds_bucket[5m])) by (le)) > 0.5
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "ChronosMesh API 95th percentile latency exceeds 500ms"
+          description: "API p95 latency is {{ $value }}s over the last 5 minutes. High latency impairs dashboard interactivity and real-time trace queries."
+
+      - alert: ChronosMeshEventProcessingFailures
+        expr: increase(chronosmesh_events_failed_total[5m]) > 5
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Elevated event processing failure rate"
+          description: "Detected {{ $value }} event processing failures in 5 minutes. Check pipeline parsing errors or clock timestamp malformations."
+
+      - alert: ChronosMeshHighAnomalyRate
+        expr: increase(chronosmesh_anomalies_total[5m]) > 20
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Causal anomaly rate spike"
+          description: "Over 20 causal anomalies detected in 5 minutes (current count: {{ $value }}). Microservices may experience severe clock skew or network reordering."
+
+      - alert: ChronosMeshNeo4jUnavailable
+        expr: chronosmesh_neo4j_operations_total == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Neo4j graph store operations inactive"
+          description: "No Neo4j write or query operations recorded for 5 minutes. Graph store may be disconnected or offline."
+
+      - alert: ChronosMeshKafkaConsumerLag
+        expr: (chronosmesh_kafka_messages_produced_total - chronosmesh_kafka_messages_consumed_total) > 500
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Kafka consumer lag growing"
+          description: "Pipeline consumer lag is {{ $value }} messages. Flink streaming processor or ingestion consumer may be falling behind producer rate."
+
+      - alert: ChronosMeshSseClientDisconnectSpike
+        expr: rate(chronosmesh_sse_connections[5m]) < -10
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Abrupt drop in SSE active subscriptions"
+          description: "Active Server-Sent Events dashboard clients dropped abruptly. Check reverse proxy or frontend reconnections."

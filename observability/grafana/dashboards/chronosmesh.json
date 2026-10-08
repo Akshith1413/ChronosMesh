@@ -1,0 +1,132 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": true,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "System Health & Core Counters",
+      "type": "row"
+    },
+    {
+      "id": 2,
+      "title": "Events Ingested (Total)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "targets": [{ "expr": "chronosmesh_events_received_total", "legendFormat": "Received" }],
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" } } }
+    },
+    {
+      "id": 3,
+      "title": "Events Processed",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "targets": [{ "expr": "chronosmesh_events_processed_total", "legendFormat": "Processed" }],
+      "fieldConfig": { "defaults": { "color": { "fixedColor": "green", "mode": "fixed" } } }
+    },
+    {
+      "id": 4,
+      "title": "Active SSE Clients",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "targets": [{ "expr": "chronosmesh_sse_connections", "legendFormat": "SSE Clients" }],
+      "fieldConfig": { "defaults": { "color": { "fixedColor": "blue", "mode": "fixed" } } }
+    },
+    {
+      "id": 5,
+      "title": "Causal Anomalies",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "targets": [{ "expr": "chronosmesh_anomalies_total", "legendFormat": "Anomalies" }],
+      "fieldConfig": { "defaults": { "color": { "fixedColor": "orange", "mode": "fixed" } } }
+    },
+    {
+      "id": 6,
+      "title": "Processing Failures",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "targets": [{ "expr": "chronosmesh_events_failed_total", "legendFormat": "Failed" }],
+      "fieldConfig": { "defaults": { "color": { "fixedColor": "red", "mode": "fixed" } } }
+    },
+    {
+      "id": 7,
+      "title": "Neo4j Operations",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "targets": [{ "expr": "chronosmesh_neo4j_operations_total", "legendFormat": "Neo4j Ops" }],
+      "fieldConfig": { "defaults": { "color": { "fixedColor": "purple", "mode": "fixed" } } }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 5 },
+      "id": 8,
+      "title": "Pipeline Rates & Throughput",
+      "type": "row"
+    },
+    {
+      "id": 9,
+      "title": "Event Ingestion & Processing Rate (ev/s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        { "expr": "rate(chronosmesh_events_received_total[1m])", "legendFormat": "Ingestion Rate" },
+        { "expr": "rate(chronosmesh_events_processed_total[1m])", "legendFormat": "Flink Processing Rate" }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Kafka Producer vs Consumer Rate (msg/s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "targets": [
+        { "expr": "rate(chronosmesh_kafka_messages_produced_total[1m])", "legendFormat": "Produced" },
+        { "expr": "rate(chronosmesh_kafka_messages_consumed_total[1m])", "legendFormat": "Consumed" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 14 },
+      "id": 11,
+      "title": "API Latency & Causal Reconstruction",
+      "type": "row"
+    },
+    {
+      "id": 12,
+      "title": "API Request Duration (p50 / p95 / p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(chronosmesh_api_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(chronosmesh_api_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(chronosmesh_api_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "Causal Graph Processing Duration (p95)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(chronosmesh_causal_processing_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95 Duration" }
+      ]
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["chronosmesh", "distributed-systems", "causality", "production"],
+  "time": { "from": "now-15m", "to": "now" },
+  "timepicker": { "refresh_intervals": ["5s", "10s", "30s", "1m"] },
+  "timezone": "browser",
+  "title": "ChronosMesh — Production System Observability",
+  "uid": "chronosmesh-prod-overview",
+  "version": 1
+}
