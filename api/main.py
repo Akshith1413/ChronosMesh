@@ -59,20 +59,14 @@ REST API layer for the ChronosMesh Distributed Causality Engine.
 )
 
 # ── Secure CORS Configuration ─────────────────────────────────────────────────
-# Production whitelisting (avoids wildcard '*' when credentials are used)
-_raw_origins = os.getenv(
-    "CORS_ALLOWED_ORIGINS",
-    "http://localhost:3000,http://localhost:5173,http://localhost:8000,http://127.0.0.1:3000,http://127.0.0.1:5173,http://127.0.0.1:8000",
-)
-allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origin_regex=r".*",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
 
 
 # ── HTTP Security Headers Middleware ──────────────────────────────────────────

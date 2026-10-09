@@ -1,0 +1,54 @@
+{
+  "family": "chronosmesh-api",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::712715586366:role/chronosmesh-ecs-execution-role",
+  "taskRoleArn": "arn:aws:iam::712715586366:role/chronosmesh-ecs-task-role",
+  "containerDefinitions": [
+    {
+      "name": "chronosmesh-api",
+      "image": "712715586366.dkr.ecr.ap-south-2.amazonaws.com/chronosmesh-api:latest",
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "hostPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {"name": "DATA_SOURCE",              "value": "demo"},
+        {"name": "AWS_DEFAULT_REGION",       "value": "ap-south-2"},
+        {"name": "SQS_EVENTS_QUEUE_URL",     "value": "https://sqs.ap-south-2.amazonaws.com/712715586366/chronosmesh-events"},
+        {"name": "SQS_RESULTS_QUEUE_URL",    "value": "https://sqs.ap-south-2.amazonaws.com/712715586366/chronosmesh-results"},
+        {"name": "DYNAMODB_EVENTS_TABLE",    "value": "chronosmesh-events"},
+        {"name": "DYNAMODB_EXEC_TABLE",      "value": "chronosmesh-executions"},
+        {"name": "DYNAMODB_ANOMALY_TABLE",   "value": "chronosmesh-anomalies"},
+        {"name": "S3_DATA_BUCKET",           "value": "chronosmesh-data-712715586366"},
+        {"name": "LOG_LEVEL",                "value": "info"},
+        {"name": "PYTHONUNBUFFERED",         "value": "1"}
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group":         "/chronosmesh/api",
+          "awslogs-region":        "ap-south-2",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:8000/api/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      },
+      "essential": true
+    }
+  ],
+  "tags": [
+    {"key": "Project", "value": "ChronosMesh"},
+    {"key": "Component", "value": "API"}
+  ]
+}

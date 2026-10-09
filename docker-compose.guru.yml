@@ -5,23 +5,17 @@ services:
       context: .
       dockerfile: api/Dockerfile
     container_name: chronosmesh-api
-    ports:
-      - "8000:8000"
+    network_mode: "host"
     environment:
       - PYTHONUNBUFFERED=1
       - LOG_LEVEL=info
     volumes:
       - .:/app
     working_dir: /app
-    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
+    command: uvicorn api.main:app --host 127.0.0.1 --port 8001 --reload
     restart: unless-stopped
-    networks:
-      - chronosmesh-net
+
+
 
   # ── Optional: Nginx to serve frontend + proxy API ───────────────────────────
   # Uncomment when deploying to a server
