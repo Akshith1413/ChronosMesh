@@ -41,8 +41,10 @@ def test_health_check():
     assert data["version"] == "1.0.0"
 
 
-def test_metrics_empty():
-    response = client.get("/api/metrics")
+def test_metrics_empty(auth_headers):
+    # JSON metrics expose the caller's explorer state, so they require authentication (Prometheus text does not).
+    assert client.get("/api/metrics").status_code == 401
+    response = client.get("/api/metrics", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     assert data["event_count"] == 0

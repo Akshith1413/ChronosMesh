@@ -377,3 +377,72 @@ Obtain token via `POST /auth/login`.
 **Response:** `EventReplayReport` (`total_layers`, `total_events`, `max_parallelism`, `layers`)  
 **Frontend Consumer:** Analytics page Event Replay view
 
+
+
+---
+
+# v2 — Experiments, Executions & Platform Status (✅ implemented 2026-10-12)
+
+These endpoints implement the blueprint's API contract (§5). All require `Authorization: Bearer <token>`; every
+execution/experiment is **owned by its creator** — other users get `404` (not `403`, so existence is not leaked);
+admins can see everything. Errors use `{"detail": "..."}`.
+
+| Method | Path | Role | Purpose |
+|---|---|---|---|
+| `GET` | `/auth/config` | public | `{demo_users_enabled}` — lets the UI hide one-click demo logins |
+| `GET` | `/api/experiments/options` | viewer | Allowed parameter ranges, delivery modes, transports, deployment limits |
+| `POST` | `/api/experiments` | analyst | Create an experiment (validated; **does not start it**). `201` |
+| `POST` | `/api/experiments/{id}/start` | analyst | Start it. `202`; `409` if not in `created` |
+| `GET` | `/api/experiments` | viewer | My experiments, newest first |
+| `GET` | `/api/experiments/{id}` | viewer | Status (`created→queued→running/streaming→succeeded/failed`), progress, headline summary |
+| `GET` | `/api/experiments/{id}/result` | viewer | Full evaluation (baselines, precision/recall/F1 with 95 % CI, concurrency, performance, fault tolerance) |
+| `GET` | `/api/experiments/{id}/executions` | viewer | Drill-down executions sampled from the run |
+| `POST` | `/api/executions` | analyst | Create a **live** execution to ingest events into |
+| `GET` | `/api/executions` | viewer | My executions (`?kind=live|experiment|sample`) |
+| `GET` | `/api/executions/{id}` | viewer | Record + statistics |
+| `POST` | `/api/executions/{id}/events` | analyst | Ingest up to 1000 events (idempotent by `event_id`; `accepted`/`duplicates`/`rejected[{index,reason}]`) |
+| `GET` | `/api/executions/{id}/events` | viewer | Events as received |
+| `GET` | `/api/executions/{id}/graph` | viewer | Reconstructed causal graph: `nodes`, `edges` (`explicit`/`inferred`/`verified`/`via_gap`), `roots`, `leaves`, `topological_order`, `unresolved` |
+| `GET` | `/api/executions/{id}/anomalies` | viewer | `?type=…&severity=…&limit=…` + `by_type`/`by_severity` counts |
+| `GET` | `/api/executions/{id}/metrics` | viewer | Reconstruction statistics |
+| `GET` | `/api/executions/{id}/truth` | viewer | Ground-truth edges (simulated executions only) |
+| `POST` | `/api/executions/{id}/explore` | analyst | Load (≤ 400 events) into the caller's **private** Trace Explorer store |
+| `GET` | `/api/system/status` | viewer | Storage health, ingest mode, SQS backlog/age, **worker heartbeat**, limits, dashboard links |
+| `GET` | `/api/health/ready` | public | Readiness (verifies persistence); `503` when degraded |
+
+### Experiment parameters (`POST /api/experiments`)
+
+| Field | Range | Meaning |
+|---|---|---|
+| `num_services` | 2–50 | Simulated microservices (canonical order/payment/inventory/shipping first) |
+| `num_events` | 10–100 000 (deployment cap `MAX_EXPERIMENT_EVENTS`) | Total events across all executions |
+| `events_per_execution` | 5–num_events | Size of each business flow |
+| `network_delay_ms` | 0–2000 | Maximum one-way delivery delay |
+| `delivery_mode` | `in_order` \| `randomized` \| `heavily_delayed` | Delay model (heavy tail + stragglers) |
+| `duplicate_rate` | 0–0.10 | Duplicate deliveries |
+| `missing_rate` | 0–0.05 | Events lost in transit |
+| `clock_drift_ms` | 0–5000 | Per-service wall-clock offset (±) |
+| `metadata_loss_rate` | 0–1 | Fraction of events that lose their vector clock |
+| `worker_failures` | 0–10 | Simulated worker crash/restarts (at-least-once redelivery) |
+| `repeats` | 1–30 | Repeats with distinct seeds → mean ± 95 % CI |
+| `transport` | `direct` \| `sqs` | In-process, or publish to the SQS queue for the worker (`repeats` must be 1) |
+
+### Event ingestion contract (`POST /api/executions/{id}/events`)
+
+```json
+{"events": [{
+  "event_id": "evt-104", "service": "payment-service", "event_type": "PAYMENT_COMPLETED",
+  "trace_id": "trace-abc", "span_id": "span-payment-02", "parent_event_ids": ["evt-102"],
+  "lamport_clock": 7,
+  "vector_clock": {"order-service": 2, "payment-service": 4, "inventory-service": 1},
+  "event_time": "2026-10-09T11:00:02Z"
+}]}
+```
+`ingestion_time` and `execution_id` are **assigned by the platform** (the URL decides the execution; a client-supplied
+value is ignored). Re-sending an `event_id` is safe. Internal field names (`service_id`, `lamport_ts`, `timestamp_ms`) are also accepted.
+
+### Changes to existing endpoints
+* `POST /graphql` requires authentication again (a regression had removed it) and resolves real data
+  (`concurrent_pairs` and `causal_order` previously always returned empty).
+* `GET /api/events/stream` now verifies its token (header, or `?token=` for `EventSource`).
+* `GET /api/metrics` (JSON) requires authentication; Prometheus text format stays public unless `METRICS_TOKEN` is set.

@@ -1,4 +1,5 @@
-from typing import List, Dict, Any
+from collections import defaultdict
+from typing import List, Dict, Any, Set
 import networkx as nx
 
 from chronosmesh.events.event import Event
@@ -10,13 +11,32 @@ class CausalDAGBuilder:
         self.dag = nx.DiGraph()
         self.detector = HappensBeforeDetector()
         self.events_map = {}
+        # Declared parents that have not been observed yet: parent_id -> {waiting child ids}.
+        # Nothing is invented for them; the edge is added if/when the parent shows up.
+        self.unresolved_children: Dict[str, Set[str]] = defaultdict(set)
+        # Event ids delivered more than once (ignored after the first delivery).
+        self.duplicates: List[str] = []
+        # Declared edges rejected because they would have closed a cycle.
+        self.rejected_edges: List[tuple] = []
 
     def build(self, events: List[Event]) -> nx.DiGraph:
         self.dag = nx.DiGraph()
-        self.events_map = {e.event_id: e for e in events}
-        
+        self.unresolved_children = defaultdict(set)
+        self.duplicates = []
+        self.rejected_edges = []
+        self.events_map = {}
+        for e in events:
+            if e.event_id in self.events_map:
+                self.duplicates.append(e.event_id)
+            else:
+                self.events_map[e.event_id] = e
+        events = list(self.events_map.values())
+
         for e in events:
             self._add_node(e)
+            for pid in e.parent_event_ids:
+                if pid not in self.events_map:
+                    self.unresolved_children[pid].add(e.event_id)
             
         for i in range(len(events)):
             for j in range(len(events)):
@@ -26,17 +46,33 @@ class CausalDAGBuilder:
                         self.dag.add_edge(events[i].event_id, events[j].event_id)
                         
         self.dag = compute_transitive_reduction(self.dag)
+        for e in events:
+            self._refresh_unresolved(e.event_id)
         return self.dag
 
     def build_incremental(self, event: Event) -> nx.DiGraph:
+        # Idempotent: a re-delivered event never alters the graph.
+        if event.event_id in self.events_map:
+            self.duplicates.append(event.event_id)
+            return self.dag
+
         self.events_map[event.event_id] = event
         self._add_node(event)
+
+        # Late-arriving parent: link every child that was waiting for this event.
+        for child_id in sorted(self.unresolved_children.pop(event.event_id, set())):
+            if child_id in self.dag and self._add_edge_safe(event.event_id, child_id):
+                self._refresh_unresolved(child_id)
+                self.dag = incremental_transitive_reduction(self.dag, child_id)
 
         # Fast-path: When explicit parent_event_ids are declared
         if event.parent_event_ids:
             for pid in event.parent_event_ids:
                 if pid in self.events_map:
-                    self.dag.add_edge(pid, event.event_id)
+                    self._add_edge_safe(pid, event.event_id)
+                else:
+                    self.unresolved_children[pid].add(event.event_id)
+            self._refresh_unresolved(event.event_id)
             self.dag = incremental_transitive_reduction(self.dag, event.event_id)
             return self.dag
 
@@ -53,6 +89,27 @@ class CausalDAGBuilder:
         self.dag = incremental_transitive_reduction(self.dag, event.event_id)
         return self.dag
 
+    # ── Unresolved-dependency bookkeeping ───────────────────────────────────
+    def _add_edge_safe(self, u: str, v: str) -> bool:
+        """Add u -> v unless it would close a cycle (bad metadata); record rejections."""
+        if u == v or (v in self.dag and u in self.dag and nx.has_path(self.dag, v, u)):
+            self.rejected_edges.append((u, v))
+            return False
+        self.dag.add_edge(u, v, explicit=True)
+        return True
+
+    def _refresh_unresolved(self, event_id: str) -> None:
+        event = self.events_map[event_id]
+        missing = [p for p in event.parent_event_ids if p not in self.events_map]
+        self.dag.nodes[event_id]["unresolved_parents"] = missing
+
+    def get_unresolved_parents(self) -> Dict[str, List[str]]:
+        """Missing parent id -> ids of the events still waiting on it."""
+        return {pid: sorted(children) for pid, children in self.unresolved_children.items() if children}
+
+    def unresolved_count(self) -> int:
+        return sum(len(c) for c in self.unresolved_children.values())
+
     def _add_node(self, event: Event):
         self.dag.add_node(
             event.event_id,
@@ -63,6 +120,8 @@ class CausalDAGBuilder:
             lamport_ts=event.lamport_ts,
             vector_clock=event.vector_clock,
             parent_event_ids=event.parent_event_ids,
+            arrival_time_ms=event.arrival_time_ms,
+            payload=event.payload,
             metadata=event.metadata.to_dict()
         )
 

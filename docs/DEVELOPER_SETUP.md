@@ -27,7 +27,7 @@ cp .env.example .env
 
 Review `.env` and verify defaults:
 - `JWT_SECRET_KEY`: Default dev secret provided; change for production.
-- `NEO4J_PASSWORD`: Set to `chronosmesh2026`.
+- `NEO4J_PASSWORD`: choose your own (only needed with `docker compose --profile full up`); leaving it empty keeps the in-memory graph store.
 - `DATA_SOURCE`: Set to `demo` (for standalone local development) or `live` (with Docker containers).
 
 ---

@@ -16,6 +16,8 @@ import { BenchmarkPage } from './pages/Benchmark';
 import { AnalyticsPage } from './pages/Analytics';
 import { GraphDiffPage } from './pages/GraphDiff';
 import { DocsPage } from './pages/Docs';
+import { ExperimentsPage } from './pages/Experiments';
+import { ObservabilityPage } from './pages/Observability';
 import { useAuth } from './hooks/useAuth';
 import { useSSE } from './hooks/useSSE';
 import api from './services/api';
@@ -31,11 +33,13 @@ const VIEWS: Record<ViewTab, { title: string; eyebrow: string; icon: string }> =
   overview: { title: 'Cluster Overview', eyebrow: 'Observe', icon: 'overview' },
   dag: { title: 'Reconstructed Causal Graph', eyebrow: 'Observe · Graph', icon: 'dag' },
   timeline: { title: 'Timeline Replay & Verification', eyebrow: 'Observe · Replay', icon: 'timeline' },
+  experiments: { title: 'Fault-Injection Experiment Lab', eyebrow: 'Observe · Experiments', icon: 'flask' },
   anomaly: { title: 'Anomaly Detection Center', eyebrow: 'Analyse · Integrity', icon: 'anomaly' },
   whatif: { title: 'What-If Blast Radius Lab', eyebrow: 'Analyse · Simulation', icon: 'whatif' },
   benchmark: { title: 'Clock Strategy Benchmarks', eyebrow: 'Analyse · Clocks', icon: 'benchmark' },
   analytics: { title: 'Latency, Topology & Causal Replay Analytics', eyebrow: 'Analyse · Metrics', icon: 'analytics' },
   diff: { title: 'Causal Graph Diff & Behavioral Drift', eyebrow: 'Analyse · Drift', icon: 'diff' },
+  observe: { title: 'Platform Observability', eyebrow: 'Operate · Telemetry', icon: 'gauge' },
   docs: { title: 'Architecture Documentation', eyebrow: 'Architecture', icon: 'docs' },
 };
 
@@ -49,6 +53,11 @@ export const App: React.FC = () => {
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState<boolean>(false);
+  const [demoEnabled, setDemoEnabled] = useState<boolean>(false);
+
+  useEffect(() => {
+    api.getAuthConfig().then((c) => setDemoEnabled(c.demo_users_enabled)).catch(() => setDemoEnabled(false));
+  }, []);
 
   // Application Data State
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
@@ -120,6 +129,27 @@ export const App: React.FC = () => {
     }
   }, [showToast, refreshMetrics]);
 
+  // After the server's store was filled from elsewhere (e.g. an experiment execution), pull it into the views.
+  const refreshAfterLoad = useCallback(async (scenario: string) => {
+    setLoading(true);
+    try {
+      const [dag, arrival, causal, anoms] = await Promise.all([
+        api.getDag(), api.getArrivalEvents(), api.getCausalEvents(), api.getAnomalies(),
+      ]);
+      setDagData(dag);
+      setArrivalEvents(arrival.events || []);
+      setCausalEvents(causal.events || []);
+      setAnomalyReport(anoms);
+      setCurrentScenario(scenario);
+      showToast(`Loaded ${arrival.count} events from ${scenario}`);
+      refreshMetrics();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to load execution', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [showToast, refreshMetrics]);
+
   // The server keeps the active trace between page loads — rehydrate the local view from it.
   const hydrated = useRef(false);
   useEffect(() => {
@@ -172,6 +202,11 @@ export const App: React.FC = () => {
 
   const handleOpenDashboardDirectly = async () => {
     if (!isAuthenticated) {
+      // Auto sign-in is a convenience for demo deployments only; real deployments always ask.
+      if (!demoEnabled) {
+        setShowLoginModal(true);
+        return;
+      }
       try {
         await login('guru', 'chronosmesh');
         setShowLanding(false);
@@ -248,6 +283,7 @@ export const App: React.FC = () => {
 
   const loginModal = (
     <LoginModal
+      demoEnabled={demoEnabled}
       open={showLoginModal}
       loading={authLoading}
       error={loginError}
@@ -361,11 +397,24 @@ export const App: React.FC = () => {
               />
             )}
 
+            {currentView === 'experiments' && (
+              <ExperimentsPage
+                canRun={user?.role === 'admin' || user?.role === 'analyst'}
+                onOpenExplorer={async (scenario) => {
+                  setCurrentScenario(scenario);
+                  await refreshAfterLoad(scenario);
+                  setCurrentView('dag');
+                }}
+              />
+            )}
+
             {currentView === 'benchmark' && <BenchmarkPage />}
 
             {currentView === 'analytics' && <AnalyticsPage />}
 
             {currentView === 'diff' && <GraphDiffPage />}
+
+            {currentView === 'observe' && <ObservabilityPage metrics={metrics} />}
 
             {currentView === 'docs' && <DocsPage />}
           </div>

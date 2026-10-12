@@ -59,7 +59,18 @@ export interface DAGData {
 }
 
 export interface Anomaly {
-  anomaly_type: 'CYCLE' | 'TIME_INVERSION' | 'DUPLICATE_EVENT' | 'CLOCK_DRIFT' | 'CONCURRENT_MUTATION';
+  anomaly_type:
+    | 'CYCLE'
+    | 'TIME_INVERSION'
+    | 'DUPLICATE_EVENT'
+    | 'CLOCK_DRIFT'
+    | 'CONCURRENT_MUTATION'
+    | 'CAUSAL_VIOLATION'
+    | 'UNRESOLVED_PARENT'
+    | 'ORPHAN_EVENT'
+    | 'VECTOR_CLOCK_GAP'
+    | 'RETRY_STORM'
+    | 'LATE_ARRIVAL';
   severity: 'CRITICAL' | 'WARNING' | 'INFO';
   source_event_id?: string;
   target_event_id?: string;
@@ -153,7 +164,7 @@ export interface User {
   username: string;
   full_name: string;
   email?: string;
-  role: 'admin' | 'viewer';
+  role: 'admin' | 'analyst' | 'viewer';
 }
 
 export interface AuthResponse {
@@ -294,3 +305,149 @@ export interface GraphDiffReport {
   scenario: string | null;
 }
 
+
+
+// ── Experiments, executions and platform status (blueprint §5 API contract) ─────────────
+export type ApproachKey = 'arrival_order' | 'wall_clock' | 'declared_only' | 'chronosmesh';
+export type ExecutionStatus = 'created' | 'queued' | 'running' | 'streaming' | 'succeeded' | 'failed';
+
+export interface ExperimentParams {
+  name: string;
+  num_services: number;
+  num_events: number;
+  events_per_execution: number;
+  network_delay_ms: number;
+  duplicate_rate: number;
+  missing_rate: number;
+  clock_drift_ms: number;
+  cross_region_delay_ms: number;
+  metadata_loss_rate: number;
+  retry_rate: number;
+  retry_burst: number;
+  delivery_mode: 'in_order' | 'randomized' | 'heavily_delayed';
+  worker_failures: number;
+  repeats: number;
+  seed: number;
+  transport: 'direct' | 'sqs';
+  branching: number;
+}
+
+export interface ExperimentOptions {
+  limits: Record<string, [number, number]>;
+  delivery_modes: string[];
+  transports: string[];
+  max_experiment_events: number;
+  defaults: ExperimentParams;
+  approaches: ApproachKey[];
+}
+
+export interface CI {
+  mean: number;
+  std: number;
+  ci95_low: number;
+  ci95_high: number;
+  n: number;
+}
+
+export interface ExperimentSummaryBrief {
+  f1: Record<ApproachKey, number>;
+  precision: Record<ApproachKey, number>;
+  recall: Record<ApproachKey, number>;
+  concurrency_accuracy: Record<ApproachKey, number>;
+  ordering_accuracy: Record<ApproachKey, number>;
+  recovery_rate: number;
+  throughput_eps: number;
+  reconstruction_seconds: number;
+  events: number;
+  executions: number;
+  anomalies: Record<string, number>;
+  repeats: number;
+}
+
+export interface ExecutionRecord {
+  execution_id: string;
+  owner: string;
+  name: string;
+  kind: 'experiment' | 'live' | 'sample';
+  status: ExecutionStatus;
+  progress: number;
+  message?: string;
+  error?: string;
+  created_at: string;
+  created_at_ms: number;
+  config?: ExperimentParams;
+  summary?: ExperimentSummaryBrief;
+  samples?: string[];
+  parent_id?: string;
+  duration_seconds?: number;
+  stats?: Record<string, number>;
+  anomalies?: { total: number; by_type: Record<string, number>; by_severity: Record<string, number> };
+}
+
+export interface RunResult {
+  seed: number;
+  executions: number;
+  events_generated: number;
+  events_delivered_unique: number;
+  deliveries_total: number;
+  events_dropped: number;
+  events_duplicated: number;
+  events_metadata_lost: number;
+  arrival_disorder: number;
+  truth_edges: number;
+  approaches: Record<ApproachKey, { precision: number; recall: number; f1: number; tp: number; fp: number; fn: number; edges: number }>;
+  concurrency: Record<ApproachKey, { accuracy: number; concurrent_precision: number; concurrent_recall: number; pairs_evaluated: number; ordering_accuracy: number }>;
+  late_event_recovery: Record<ApproachKey, number | null>;
+  late_edges: number;
+  performance: { reconstruction_seconds: number; throughput_eps: number | null; cpu_seconds: number; peak_rss_mb: number };
+  fault_tolerance: {
+    worker_crashes_injected: number;
+    recoveries: number;
+    redelivered_messages: number;
+    duplicates_suppressed: number;
+    duplicate_detection_rate: number | null;
+    state_consistent_after_recovery: boolean;
+  };
+  anomalies: { total: number; by_type: Record<string, number> };
+  reconstruction: Record<string, number>;
+}
+
+export interface ExperimentResult {
+  config: ExperimentParams;
+  runs: RunResult[];
+  transport?: string;
+  summary: {
+    approaches: Record<ApproachKey, { precision: CI; recall: CI; f1: CI }>;
+    concurrency: Record<ApproachKey, { accuracy: CI; concurrent_precision: CI; concurrent_recall: CI }>;
+    ordering: Record<ApproachKey, CI>;
+    late_event_recovery: Record<ApproachKey, CI>;
+    duplicate_detection_rate: CI | null;
+    performance: Record<'reconstruction_seconds' | 'throughput_eps' | 'cpu_seconds' | 'peak_rss_mb', CI>;
+    recovery_rate: number;
+    recovery_f1_threshold: number;
+    duplicates_suppressed_total: number;
+    all_recoveries_consistent: boolean;
+  };
+}
+
+export interface ExecutionGraph extends DAGData {
+  execution_id: string;
+  unresolved: Record<string, string[]>;
+  truncated: boolean;
+  total_nodes: number;
+  total_edges: number;
+  status?: ExecutionStatus;
+}
+
+export interface SystemStatus {
+  environment: string;
+  storage: { backend: string; ok: boolean; table?: string; bucket?: string; error?: string };
+  ingest_mode: 'inline' | 'queue';
+  queue: { queue: string; visible?: number; in_flight?: number; delayed?: number; oldest_message_age_seconds?: number | null } | null;
+  worker: { status: 'healthy' | 'down' | 'unknown'; last_heartbeat_age_seconds: number | null } | null;
+  limits: { max_experiment_events: number; max_execution_events: number; max_ingest_batch: number };
+  grafana_url: string | null;
+  links: { grafana: string | null; cloudwatch: string | null; xray: string | null };
+  tracing: boolean;
+  cached_engines: number;
+}

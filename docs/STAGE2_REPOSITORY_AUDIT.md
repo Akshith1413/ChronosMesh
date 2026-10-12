@@ -170,7 +170,7 @@ edge attributes:
 
 | Config Item | Location | Value |
 |---|---|---|
-| JWT Secret Key | `api/auth.py` line 15 | Hardcoded string `"chronosmesh-secret-key-guru-2024-xQ9mP2vL"` ⚠️ |
+| JWT Secret Key | `api/auth.py` line 15 | Hardcoded string (value redacted; the key was rotated and the code now refuses weak/default secrets in production) ⚠️ |
 | JWT Algorithm | `api/auth.py` line 16 | `"HS256"` |
 | Token expiry | `api/auth.py` line 17 | 1440 minutes (24 hours) |
 | Demo users | `api/auth.py` lines 23-38 | `guru/chronosmesh` (admin), `demo/demo123` (viewer) ⚠️ |

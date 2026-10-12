@@ -1,0 +1,407 @@
+{
+  "uid": "chronosmesh-aws",
+  "title": "ChronosMesh \u2014 AWS (CloudWatch)",
+  "tags": [
+    "chronosmesh",
+    "aws"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "editable": false,
+  "graphTooltip": 1,
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Worker custom metrics (namespace ChronosMesh)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Events processed / duplicates / errors",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "queryMode": "Metrics",
+          "namespace": "ChronosMesh",
+          "metricName": "EventsProcessed",
+          "dimensions": {
+            "Service": "worker"
+          },
+          "statistic": "Maximum",
+          "period": "60",
+          "region": "default",
+          "id": "",
+          "expression": "",
+          "matchExact": true,
+          "label": "processed",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "refId": "A"
+        },
+        {
+          "queryMode": "Metrics",
+          "namespace": "ChronosMesh",
+          "metricName": "DuplicateEvents",
+          "dimensions": {
+            "Service": "worker"
+          },
+          "statistic": "Maximum",
+          "period": "60",
+          "region": "default",
+          "id": "",
+          "expression": "",
+          "matchExact": true,
+          "label": "duplicates",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "refId": "B"
+        },
+        {
+          "queryMode": "Metrics",
+          "namespace": "ChronosMesh",
+          "metricName": "ProcessingErrors",
+          "dimensions": {
+            "Service": "worker"
+          },
+          "statistic": "Maximum",
+          "period": "60",
+          "region": "default",
+          "id": "",
+          "expression": "",
+          "matchExact": true,
+          "label": "errors",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Queue depth and oldest message age",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "queryMode": "Metrics",
+          "namespace": "ChronosMesh",
+          "metricName": "QueueDepth",
+          "dimensions": {
+            "Service": "worker"
+          },
+          "statistic": "Maximum",
+          "period": "60",
+          "region": "default",
+          "id": "",
+          "expression": "",
+          "matchExact": true,
+          "label": "depth",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "refId": "A"
+        },
+        {
+          "queryMode": "Metrics",
+          "namespace": "ChronosMesh",
+          "metricName": "QueueOldestMessageAge",
+          "dimensions": {
+            "Service": "worker"
+          },
+          "statistic": "Maximum",
+          "period": "60",
+          "region": "default",
+          "id": "",
+          "expression": "",
+          "matchExact": true,
+          "label": "oldest age (s)",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Unresolved dependencies",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "queryMode": "Metrics",
+          "namespace": "ChronosMesh",
+          "metricName": "UnresolvedDependencies",
+          "dimensions": {
+            "Service": "worker"
+          },
+          "statistic": "Maximum",
+          "period": "60",
+          "region": "default",
+          "id": "",
+          "expression": "",
+          "matchExact": true,
+          "label": "unresolved",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Worker heartbeat",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 9,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "queryMode": "Metrics",
+          "namespace": "ChronosMesh",
+          "metricName": "WorkerHeartbeat",
+          "dimensions": {
+            "Service": "worker"
+          },
+          "statistic": "Sum",
+          "period": "60",
+          "region": "default",
+          "id": "",
+          "expression": "",
+          "matchExact": true,
+          "label": "heartbeat",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 6,
+      "type": "row",
+      "title": "AWS service metrics",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "ECS CPU / memory (API service)",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "queryMode": "Metrics",
+          "namespace": "AWS/ECS",
+          "metricName": "CPUUtilization",
+          "dimensions": {
+            "ClusterName": "chronosmesh-prod",
+            "ServiceName": "chronosmesh-prod-api"
+          },
+          "statistic": "Average",
+          "period": "60",
+          "region": "default",
+          "id": "",
+          "expression": "",
+          "matchExact": true,
+          "label": "cpu %",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "refId": "A"
+        },
+        {
+          "queryMode": "Metrics",
+          "namespace": "AWS/ECS",
+          "metricName": "MemoryUtilization",
+          "dimensions": {
+            "ClusterName": "chronosmesh-prod",
+            "ServiceName": "chronosmesh-prod-api"
+          },
+          "statistic": "Average",
+          "period": "60",
+          "region": "default",
+          "id": "",
+          "expression": "",
+          "matchExact": true,
+          "label": "memory %",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "SQS visible / in-flight messages",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "queryMode": "Metrics",
+          "namespace": "AWS/SQS",
+          "metricName": "ApproximateNumberOfMessagesVisible",
+          "dimensions": {
+            "QueueName": "chronosmesh-prod-events"
+          },
+          "statistic": "Average",
+          "period": "60",
+          "region": "default",
+          "id": "",
+          "expression": "",
+          "matchExact": true,
+          "label": "visible",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "refId": "A"
+        },
+        {
+          "queryMode": "Metrics",
+          "namespace": "AWS/SQS",
+          "metricName": "ApproximateNumberOfMessagesNotVisible",
+          "dimensions": {
+            "QueueName": "chronosmesh-prod-events"
+          },
+          "statistic": "Average",
+          "period": "60",
+          "region": "default",
+          "id": "",
+          "expression": "",
+          "matchExact": true,
+          "label": "in flight",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    }
+  ],
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": []
+}

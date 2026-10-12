@@ -31,10 +31,11 @@ class Neo4jStore:
         username: Optional[str] = None,
         password: Optional[str] = None,
         database: Optional[str] = None,
+        force_in_memory: bool = False,
     ) -> None:
         self.uri = uri or os.getenv("NEO4J_URI", "bolt://localhost:7687")
         self.username = username or os.getenv("NEO4J_USERNAME", "neo4j")
-        self.password = password or os.getenv("NEO4J_PASSWORD", "chronosmesh2026")
+        self.password = password or os.getenv("NEO4J_PASSWORD") or ""
         self.database = database or os.getenv("NEO4J_DATABASE", "neo4j")
 
         self.driver: Optional[Any] = None
@@ -44,9 +45,13 @@ class Neo4jStore:
         self._in_memory_events: Dict[str, Dict[str, Any]] = {}
         self._in_memory_edges: List[Dict[str, Any]] = []
 
-        force_in_memory = os.getenv("CHRONOSMESH_FORCE_IN_MEMORY_NEO4J", "false").lower() in ("true", "1")
+        force_in_memory = force_in_memory or os.getenv("CHRONOSMESH_FORCE_IN_MEMORY_NEO4J", "false").lower() in ("true", "1")
         if force_in_memory or not NEO4J_DRIVER_AVAILABLE:
             logger.info("Using Neo4j in-memory simulation store.")
+            return
+        if not self.password:
+            # No credentials configured: never guess a default password, stay on the in-memory store.
+            logger.info("NEO4J_PASSWORD not set; using the Neo4j in-memory simulation store.")
             return
 
         try:

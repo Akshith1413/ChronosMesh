@@ -98,3 +98,23 @@ If Neo4j or Kafka experiences total network partition:
 | **Kafka Broker** | `< 2 minutes` | `< 100 ms` (Acks=all) | In-memory local fallback buffer |
 | **Neo4j Graph Store**| `< 5 minutes` | `< 1 hour` (Daily dump) | In-memory dual-write mirror |
 | **Flink Processing** | `< 30 seconds`| `< 500 ms` (Checkpoint) | Replay from Kafka offset |
+
+
+---
+
+# AWS runbook (added 2026-10-12)
+
+Stateful resources live in the **data stack** (`chronosmesh-<env>-data`), separate from compute, so redeploying the
+application never touches data.
+
+| Asset | Protection | Recovery |
+|---|---|---|
+| DynamoDB tables | Point-in-time recovery (35 days), TTL expiry of old executions, SSE | `aws dynamodb restore-table-to-point-in-time --source-table-name chronosmesh-prod-executions --target-table-name …-restored --use-latest-restorable-time` then repoint `DYNAMODB_*` (stack parameter) or copy back |
+| S3 data bucket | Versioning, private, lifecycle (30 d for `executions/`) | Restore a previous version: `aws s3api list-object-versions` → `copy-object` with `--copy-source …?versionId=` |
+| SQS events queue | Retention 4 d, **dead-letter queue** after 5 receives (14 d) | Inspect `chronosmesh-prod-events-dlq`; after fixing the cause: `aws sqs start-message-move-task --source-arn <dlq-arn> --destination-arn <queue-arn>` |
+| Worker state | **Durable-before-ack**: every message is written to S3 (`executions/<id>/segments/`) before it is acknowledged; a restarted worker rebuilds the stream from its segments | Just restart the task (`scale.sh up`); `test_new_worker_recovers_acknowledged_state_from_segments` proves it |
+| Secrets | Secrets Manager (versioned) | `aws secretsmanager get-secret-value` / rotate with `put-secret-value`; force a new deployment so tasks re-read |
+| Images | ECR (immutable tags, last 10 kept, scan-on-push) | Redeploy a previous tag via the `ApiImage`/`WorkerImage` stack parameters |
+| Whole environment | Infrastructure as code | `infrastructure/scripts/deploy.sh` rebuilds compute in ~15 min; data stack is independent |
+
+**Region failure** is not covered (single region, `ap-south-2`); DynamoDB global tables and S3 cross-region replication are the documented next step.

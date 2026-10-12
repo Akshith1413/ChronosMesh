@@ -1,0 +1,50 @@
+name: Integration & Performance
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r api/requirements.txt
+          pip install -e .
+
+      - name: End-to-end (stream pipeline, Stage 4)
+        run: python -m pytest tests/integration/test_stage4_e2e.py tests/integration/test_worker_sqs.py -q
+
+      - name: Reproduce the evaluation (ChronosMesh vs. baselines, 3 repeats)
+        run: |
+          python - <<'PY'
+          import json
+          from chronosmesh.evaluation import run_experiment
+          from chronosmesh.simulator import ExperimentConfig
+          cfg = ExperimentConfig(num_services=10, num_events=5000, network_delay_ms=500, duplicate_rate=0.05,
+                                 missing_rate=0.02, clock_drift_ms=100, delivery_mode="heavily_delayed", repeats=3)
+          out = run_experiment(cfg)
+          s = out["summary"]
+          for k, v in s["approaches"].items():
+              print(f"{k:14s} F1 {v['f1']['mean']:.3f} (95% CI {v['f1']['ci95_low']:.3f}-{v['f1']['ci95_high']:.3f})")
+          print("recovery rate", s["recovery_rate"])
+          assert s["approaches"]["chronosmesh"]["f1"]["mean"] > 0.99
+          assert s["approaches"]["chronosmesh"]["f1"]["mean"] > s["approaches"]["wall_clock"]["f1"]["mean"]
+          json.dump(out, open("evaluation.json", "w"))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: evaluation-results
+          path: evaluation.json

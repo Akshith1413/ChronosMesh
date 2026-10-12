@@ -1,56 +1,110 @@
 groups:
-  - name: chronosmesh_alerts
+  # ── Blueprint §8 signals: the platform's own health ─────────────────────────
+  - name: chronosmesh_pipeline
+    rules:
+      - alert: ChronosMeshWorkerDown
+        expr: time() - max(chronosmesh_worker_heartbeat_timestamp_seconds) > 120
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "Reconstruction worker stopped polling"
+          description: "No worker heartbeat for {{ $value | humanizeDuration }}. Queued events are not being reconstructed."
+
+      - alert: ChronosMeshQueueBacklogAge
+        expr: chronosmesh_queue_oldest_message_age_seconds > 300
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: "Oldest queued event is {{ $value | humanizeDuration }} old"
+          description: "The worker is falling behind the producers (or is down)."
+
+      - alert: ChronosMeshUnresolvedDependenciesHigh
+        expr: chronosmesh_unresolved_dependencies > 500
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value }} causal dependencies are still unresolved"
+          description: "Parents that never arrive point to dropped events, a stalled producer or a partition."
+
+      - alert: ChronosMeshReconstructionLatencyHigh
+        expr: histogram_quantile(0.95, sum(rate(chronosmesh_reconstruction_duration_seconds_bucket[5m])) by (le)) > 5
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "p95 graph reconstruction latency is {{ $value | humanizeDuration }}"
+          description: "Reconstruction is slow; check execution size and worker CPU."
+
+      - alert: ChronosMeshProcessingErrors
+        expr: increase(chronosmesh_processing_errors_total[5m]) > 5
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $value }} processing errors in 5 minutes (stage: {{ $labels.stage }})"
+          description: "Failed messages are retried and then dead-lettered; inspect the DLQ."
+
+      - alert: ChronosMeshDuplicateRateHigh
+        expr: >
+          rate(chronosmesh_events_duplicate_total[5m])
+            / clamp_min(rate(chronosmesh_events_received_total[5m]), 1e-9) > 0.2
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "More than 20% of deliveries are duplicates"
+          description: "Retry storm or an at-least-once redelivery loop; processing stays idempotent but producers need attention."
+
+  # ── API / application ────────────────────────────────────────────────────────
+  - name: chronosmesh_api
     rules:
       - alert: ChronosMeshApiHighLatency
         expr: histogram_quantile(0.95, sum(rate(chronosmesh_api_request_duration_seconds_bucket[5m])) by (le)) > 0.5
         for: 1m
-        labels:
-          severity: warning
+        labels: { severity: warning }
         annotations:
           summary: "ChronosMesh API 95th percentile latency exceeds 500ms"
-          description: "API p95 latency is {{ $value }}s over the last 5 minutes. High latency impairs dashboard interactivity and real-time trace queries."
+          description: "API p95 latency is {{ $value }}s over the last 5 minutes."
 
       - alert: ChronosMeshEventProcessingFailures
         expr: increase(chronosmesh_events_failed_total[5m]) > 5
         for: 1m
-        labels:
-          severity: critical
+        labels: { severity: critical }
         annotations:
-          summary: "Elevated event processing failure rate"
-          description: "Detected {{ $value }} event processing failures in 5 minutes. Check pipeline parsing errors or clock timestamp malformations."
+          summary: "Elevated rejected-event rate"
+          description: "{{ $value }} events were rejected in 5 minutes (reason: {{ $labels.reason }}). Check producer payloads."
 
       - alert: ChronosMeshHighAnomalyRate
         expr: increase(chronosmesh_anomalies_total[5m]) > 20
         for: 2m
-        labels:
-          severity: warning
+        labels: { severity: warning }
         annotations:
           summary: "Causal anomaly rate spike"
-          description: "Over 20 causal anomalies detected in 5 minutes (current count: {{ $value }}). Microservices may experience severe clock skew or network reordering."
+          description: "{{ $value }} causal anomalies in 5 minutes. Microservices may experience severe clock skew or network reordering."
 
-      - alert: ChronosMeshNeo4jUnavailable
-        expr: chronosmesh_neo4j_operations_total == 0
-        for: 5m
-        labels:
-          severity: critical
+      - alert: ChronosMeshSseClientDisconnectSpike
+        expr: delta(chronosmesh_sse_connections[5m]) < -10
+        for: 1m
+        labels: { severity: warning }
         annotations:
-          summary: "Neo4j graph store operations inactive"
-          description: "No Neo4j write or query operations recorded for 5 minutes. Graph store may be disconnected or offline."
+          summary: "Abrupt drop in SSE active subscriptions"
+          description: "Active Server-Sent Events dashboard clients dropped abruptly. Check the reverse proxy or frontend reconnections."
+
+  # ── Optional streaming stack (docker compose --profile full) ────────────────
+  - name: chronosmesh_streaming
+    rules:
+      - alert: ChronosMeshNeo4jUnavailable
+        # Only meaningful while events are flowing; a demo-mode API never touches Neo4j.
+        expr: >
+          rate(chronosmesh_events_received_total[5m]) > 0
+            and on() rate(chronosmesh_neo4j_operations_total[5m]) == 0
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "Neo4j graph store operations inactive while events are flowing"
+          description: "No Neo4j write or query operations in 5 minutes. The graph store may be disconnected."
 
       - alert: ChronosMeshKafkaConsumerLag
         expr: (chronosmesh_kafka_messages_produced_total - chronosmesh_kafka_messages_consumed_total) > 500
         for: 3m
-        labels:
-          severity: warning
+        labels: { severity: warning }
         annotations:
           summary: "Kafka consumer lag growing"
-          description: "Pipeline consumer lag is {{ $value }} messages. Flink streaming processor or ingestion consumer may be falling behind producer rate."
-
-      - alert: ChronosMeshSseClientDisconnectSpike
-        expr: rate(chronosmesh_sse_connections[5m]) < -10
-        for: 1m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Abrupt drop in SSE active subscriptions"
-          description: "Active Server-Sent Events dashboard clients dropped abruptly. Check reverse proxy or frontend reconnections."
+          description: "Pipeline consumer lag is {{ $value }} messages."

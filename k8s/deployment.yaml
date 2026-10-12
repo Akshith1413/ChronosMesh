@@ -2,90 +2,125 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: chronosmesh-api
-  labels:
-    app: chronosmesh
-    component: api
+  labels: { app: chronosmesh, component: api }
 spec:
-  replicas: 3
+  replicas: 2
   selector:
-    matchLabels:
-      app: chronosmesh
-      component: api
+    matchLabels: { app: chronosmesh, component: api }
   template:
     metadata:
-      labels:
-        app: chronosmesh
-        component: api
+      labels: { app: chronosmesh, component: api }
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8000"
         prometheus.io/path: "/metrics"
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: { type: RuntimeDefault }
       containers:
         - name: api
-          image: chronosmesh-api:latest
+          image: chronosmesh-api:latest        # push to ECR and pin the digest in real deployments
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
               name: http
           envFrom:
-            - configMapRef:
-                name: chronosmesh-config
+            - configMapRef: { name: chronosmesh-config }
+            - secretRef: { name: chronosmesh-secrets }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
           resources:
-            requests:
-              cpu: "250m"
-              memory: "256Mi"
-            limits:
-              cpu: "1000m"
-              memory: "1Gi"
+            requests: { cpu: "250m", memory: "384Mi" }
+            limits: { cpu: "1000m", memory: "1Gi" }
           readinessProbe:
-            httpGet:
-              path: /api/health
-              port: 8000
+            httpGet: { path: /api/health/ready, port: 8000 }
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
-            httpGet:
-              path: /api/health
-              port: 8000
+            httpGet: { path: /api/health, port: 8000 }
             initialDelaySeconds: 15
             periodSeconds: 20
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chronosmesh-worker
+  labels: { app: chronosmesh, component: worker }
+spec:
+  replicas: 1          # one consumer per stream today; shard with SQS FIFO message groups before scaling out
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: { app: chronosmesh, component: worker }
+  template:
+    metadata:
+      labels: { app: chronosmesh, component: worker }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+    spec:
+      terminationGracePeriodSeconds: 45     # SIGTERM drains the current message and flushes snapshots
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: worker
+          image: chronosmesh-engine:latest
+          envFrom:
+            - configMapRef: { name: chronosmesh-config }
+            - secretRef: { name: chronosmesh-secrets }
+          env:
+            - { name: CLOUDWATCH_METRICS, value: "true" }
+          ports:
+            - containerPort: 9100
+              name: metrics
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits: { cpu: "1000m", memory: "1Gi" }
+          livenessProbe:
+            httpGet: { path: /metrics, port: 9100 }
+            initialDelaySeconds: 20
+            periodSeconds: 30
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: chronosmesh-neo4j
-  labels:
-    app: chronosmesh
-    component: graph-db
+  labels: { app: chronosmesh, component: graph-db }
 spec:
   serviceName: neo4j-service
   replicas: 1
   selector:
-    matchLabels:
-      app: chronosmesh
-      component: graph-db
+    matchLabels: { app: chronosmesh, component: graph-db }
   template:
     metadata:
-      labels:
-        app: chronosmesh
-        component: graph-db
+      labels: { app: chronosmesh, component: graph-db }
     spec:
       containers:
         - name: neo4j
           image: neo4j:5.15-community
           ports:
-            - containerPort: 7474
-              name: http
-            - containerPort: 7687
-              name: bolt
+            - { containerPort: 7474, name: http }
+            - { containerPort: 7687, name: bolt }
           env:
+            - name: NEO4J_PASSWORD
+              valueFrom: { secretKeyRef: { name: chronosmesh-secrets, key: NEO4J_PASSWORD } }
             - name: NEO4J_AUTH
-              value: "neo4j/chronosmesh2026"
+              value: "neo4j/$(NEO4J_PASSWORD)"
           resources:
-            requests:
-              cpu: "500m"
-              memory: "512Mi"
-            limits:
-              cpu: "2000m"
-              memory: "2Gi"
+            requests: { cpu: "500m", memory: "512Mi" }
+            limits: { cpu: "2000m", memory: "2Gi" }

@@ -1,48 +1,37 @@
 # ChronosMesh — Final Implementation Status Matrix
 
-**Verification Date:** September 28, 2026  
-**Auditor:** B. Guru Sai Prasad Reddy (Full-Stack, API, Visualization, Documentation, End-to-End Integration)  
-**Repository:** [https://github.com/Akshith1413/ChronosMesh](https://github.com/Akshith1413/ChronosMesh)  
-**Release Tag:** `v1.0.0-rc1`  
+**Last verified:** 2026-10-12 · **Repository:** [github.com/Akshith1413/ChronosMesh](https://github.com/Akshith1413/ChronosMesh)
 
----
+> This file previously carried a 2026-09-28 matrix that overstated several items (for example: "215 tests green" when 3 were failing,
+> `k8s/hpa.yaml` and `observability/rules.yml` that did not exist, CORS "whitelist" that reflected every origin, "CI/CD verified" for workflows
+> GitHub never ran, and "Cloud deployment NOT EXECUTED" while an unused AWS base existed). It is replaced by the verified matrix below.
+> The authoritative, itemised status is [`GAP_ANALYSIS.md`](GAP_ANALYSIS.md) (baseline) and [`COMPLETION_STATUS.md`](COMPLETION_STATUS.md) (now).
 
-## 1. Subsystem Implementation & Verification Status
+## 1. Subsystem status
 
-| Component | Status | Implementation Details & Forensic Findings |
+| Component | Status | Implementation and verification |
 |---|:---:|---|
-| **Clock algorithms** | **VERIFIED** | Lamport, Vector, and Hybrid Logical Clocks (HLC) fully implemented and tested with 45+ unit tests (`tests/unit/test_lamport.py`, `test_vector.py`, `test_hlc.py`). |
-| **Causal engine** | **VERIFIED** | Strict partial order happens-before relation and pairwise concurrency detection ($E_2 \parallel E_3$) computed from vector clock dominance. |
-| **DAG** | **VERIFIED** | NetworkX DAG construction with incremental transitive reduction ($O(k \cdot \|V\|)$), verified against ground truth topologies (`tests/correctness/test_known_graphs.py`). |
-| **REST API** | **VERIFIED** | FastAPI gateway with 36 active endpoints, Pydantic validation schemas, SSE live stream, and status code compliance. |
-| **GraphQL** | **VERIFIED** | Lightweight `/graphql` query endpoint resolving causal ancestors, descendants, concurrency, and timeline relationships. |
-| **Authentication / RBAC** | **VERIFIED** | HS256 JWT tokens with 3-tier Role-Based Access Control (`admin`, `operator`, `viewer`), route guards, and OWASP security headers. |
-| **Frontend** | **VERIFIED** | Unified canonical React 18 + TypeScript + Vite + D3.js architecture (`frontend/src/`) compiled to `frontend/dist/` (619 modules transformed) and served directly by FastAPI at `http://localhost:8000`. Legacy fallback preserved at `/vanilla`. |
-| **Kafka** | **LOCAL VERIFIED / FALLBACK** | `confluent_kafka` producer and consumer implemented with retry logic; transparently falls back to in-memory priority queue when broker is offline. |
-| **Flink** | **LOCAL EVENT-TIME IMPLEMENTATION** | Python stream processor implementing Flink event-time watermarking, tumbling/sliding/session windows, and bounded out-of-orderness buffering. |
-| **Neo4j** | **DRIVER + FALLBACK** | Official Python `neo4j` driver with Cypher queries for multi-hop graph traversals; transparently falls back to in-memory graph store when Neo4j is unreachable. |
-| **TimescaleDB** | **LOCAL SQLITE MODEL** | Time-series audit store and arrival inversion analytical engine locally modeled and tested via in-memory SQLite tables (`event_audit_log`). |
-| **PostgreSQL** | **LOCAL SQLITE MODEL** | Service topology metadata and trace configuration repository locally modeled and tested via in-memory SQLite tables (`service_configs`, `trace_configs`). |
-| **Lambda** | **LOCAL HANDLER** | Python event decoration handler conforming to AWS Lambda streaming signatures, enriching events with TrueTime uncertainty and transit latency. |
-| **gRPC** | **SDK / LOCAL** | `ChronosMeshGrpcEmitter` client SDK for microservices with automatic clock stamping, batching, and in-memory fallback queue. |
-| **Avro** | **SCHEMA DEFINED** | Apache Avro schema (`chronosmesh/events/event.avsc`) defined for Schema Registry compatibility; running local pipeline serializes events via JSON. |
-| **Protobuf** | **SCHEMA DEFINED** | Protocol Buffers v3 schema (`chronosmesh/events/event.proto`) defined for RPC serialization; running local pipeline serializes events via JSON. |
-| **Kubernetes** | **MANIFEST VALIDATED** | Production-ready Kubernetes manifests (`k8s/deployment.yaml`, `k8s/service.yaml`, `k8s/hpa.yaml`) validated syntactically; cluster deployment not executed on local host. |
-| **Cloud deployment** | **NOT EXECUTED** | AWS MSK, AWS Neptune, and AWS Lambda deployment blueprints documented in `docs/CLOUD_DEPLOYMENT.md`; not deployed to live cloud infrastructure. |
-| **Prometheus** | **VERIFIED** | Prometheus text exposition format active at `GET /metrics` and `GET /api/metrics`, exporting ingestion counters and latency histograms. |
-| **Grafana** | **CONFIGURED** | Grafana dashboard provisioning and 4 custom alert rules configured in `observability/rules.yml`. |
-| **CI/CD** | **VERIFIED** | GitHub Actions workflow (`.github/workflows/ci.yml`) automating linting, type-checking, backend Pytest, and frontend Vitest. |
-| **Performance** | **BENCHMARKED** | Empirically measured: 3,602.3 ev/s generation rate, 211.7 ev/s windowed stream processing rate, 0.518ms p50 generation latency, 3.1x DAG reduction speedup. |
-| **Chaos** | **APPLICATION-LEVEL VERIFIED** | 8 automated resilience tests in `tests/integration/test_chaos.py` verifying broker offline fallback, DB offline fallback, clock skew, and cycle prevention. |
+| Clock algorithms (Lamport, vector, HLC) | **VERIFIED** | `chronosmesh/clocks`, unit tests |
+| Causal engine (happens-before, concurrency) | **VERIFIED** | vector-clock dominance; proven against an independent oracle |
+| Scalable reconstruction | **VERIFIED** | `chronosmesh/reconstruction`: O(events × services), unresolved-parent tracking, idempotent ingest, gap bridging |
+| DAG + transitive reduction | **VERIFIED** | NetworkX-based builder (kept) and the fast engine; both tested |
+| Anomaly detection | **VERIFIED** | 11 types; streaming stage repaired (it silently did nothing before) |
+| Simulator + evaluation | **VERIFIED** | independent ground truth, 4 approaches, CIs; [`EVALUATION_RESULTS.md`](EVALUATION_RESULTS.md) |
+| REST / SSE / GraphQL API | **VERIFIED** | authenticated, owner-scoped; GraphQL regression fixed |
+| Auth / RBAC | **VERIFIED** | mandatory strong secret in production, demo users off in production, 3 roles |
+| Persistence | **VERIFIED (moto) / DEPLOYED** | DynamoDB + S3 repository, one contract suite for memory and AWS backends |
+| Queue worker | **VERIFIED (moto) / DEPLOYED** | SQS, durable-before-ack, crash recovery, DLQ |
+| Frontend | **VERIFIED** | React 18 + TS + Vite + D3; new Experiment Lab and Observability pages; Vitest + `tsc` + build |
+| Kafka | **LOCAL VERIFIED / FALLBACK** | `confluent_kafka` code with in-memory fallback; broker via `docker compose --profile full`. **MSK is blocked by the AWS account** |
+| Flink | **LOCAL EVENT-TIME IMPLEMENTATION** | Python watermarking pipeline; Managed Flink is blocked by the AWS account |
+| Neo4j | **DRIVER + FALLBACK** | no default password any more; in-memory fallback otherwise |
+| TimescaleDB / PostgreSQL | **LOCAL SQLITE MODEL** | unchanged |
+| Lambda enrichment / gRPC / Avro / Protobuf | **LOCAL / SCHEMA** | unchanged |
+| Kubernetes | **MANIFESTS PARSE-TESTED** | `deployment`, `service`, `configmap`, `hpa`, `secret.example`; not applied to a cluster |
+| Cloud deployment | **DEPLOYED** | CloudFormation stacks on AWS; see [`CLOUD_DEPLOYMENT.md`](CLOUD_DEPLOYMENT.md) |
+| Prometheus / Grafana / OpenTelemetry | **VERIFIED** | blueprint metric names, 4 dashboards, alert rules, collector configs; consistency tested |
+| CI/CD | **DEFINED** | workflows moved to `.github/workflows/` and validated; first run happens on push |
+| Chaos | **VERIFIED** | worker-crash recovery, duplicates, loss, drift, delay, retry storms all reproduced and scored |
 
----
-
-## 2. Test Suite Status
-- **Backend (Pytest):** **204 passed, 1 warning in 26.59s** (100% green).
-- **Frontend (Vitest):** **4 passed in 1.31s** (100% green).
-- **Frontend Build (Vite):** **619 modules transformed cleanly into `frontend/dist/`** in 9.83s.
-
----
-
-## 3. Verification Verdict
-Every component is accounted for with strict honesty regarding local simulation vs cloud deployment. ChronosMesh is fully validated, thoroughly tested, and ready for GitHub repository release.
+## 2. Test suites
+See [`COMPLETION_STATUS.md` §0](COMPLETION_STATUS.md) for the current counts and what they cover.

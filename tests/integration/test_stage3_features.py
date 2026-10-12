@@ -80,8 +80,10 @@ def test_frontend_serving():
 def test_sse_stream_endpoint(auth_headers):
     # Load trace first
     client.get("/api/traces/T-1001", headers=auth_headers)
-    # Connect to stream with limit
-    with client.stream("GET", "/api/events/stream?limit=2") as response:
+    # The stream requires a valid token (EventSource cannot set headers, so it is passed as ?token=)
+    assert client.get("/api/events/stream?limit=2").status_code == 401
+    token = auth_headers["Authorization"].split()[1]
+    with client.stream("GET", f"/api/events/stream?limit=2&token={token}") as response:
         assert response.status_code == 200
         assert "text/event-stream" in response.headers["content-type"]
         lines = [line for line in response.iter_lines() if line]

@@ -5,6 +5,7 @@ import { ServiceOrbit } from '../components/scenes/ServiceOrbit';
 import { PatternGlyph } from '../components/PatternGlyph';
 import { Loader, EmptyState } from '../components/LoadingState';
 import { Icon } from '../components/Icon';
+import { PlatformStrip } from '../components/PlatformStrip';
 import { Tilt } from '../fx/Reveal';
 import { useCountUp } from '../fx/hooks';
 import { SystemMetrics, Event, Scenario, ServiceHealthReport, LatencyHistogramReport, AnomalyReport } from '../types';
@@ -147,6 +148,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
   return (
     <>
+      <PlatformStrip />
+
       {/* ── Mesh pulse + KPIs ──────────────────────────────────────── */}
       <section className="dash-top">
         <div className="panel flush orbit-panel">

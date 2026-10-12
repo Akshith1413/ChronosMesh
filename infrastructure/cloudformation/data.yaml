@@ -1,0 +1,394 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  ChronosMesh data plane (long-lived): DynamoDB tables, S3 data bucket, SQS event queue with dead-letter queue,
+  SNS alert topic, Secrets Manager secrets and ECR repositories (the cost budget is created by
+  scripts/budget.sh because AWS::Budgets::Budget is not available in every region). Deployed independently of the
+  compute stack so that application redeployments never touch data.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    AllowedPattern: "^[a-z0-9-]{2,12}$"
+    Description: Short environment name used as a resource-name suffix.
+  AlertEmail:
+    Type: String
+    Default: ""
+    Description: Optional email subscribed to the alerts topic (AWS sends a confirmation link).
+  ExecutionTtlDays:
+    Type: Number
+    Default: 30
+    MinValue: 1
+    Description: Retention for executions, events, anomalies and graph exports.
+  QueueMaxReceiveCount:
+    Type: Number
+    Default: 5
+    MinValue: 1
+    Description: Receives before a poison message is moved to the dead-letter queue.
+
+Conditions:
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmail, ""]]
+
+Resources:
+  # ── DynamoDB ──────────────────────────────────────────────────────────────────
+  ExecutionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub chronosmesh-${Environment}-executions
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: execution_id, AttributeType: S }
+        - { AttributeName: owner, AttributeType: S }
+        - { AttributeName: created_at_ms, AttributeType: N }
+      KeySchema:
+        - { AttributeName: execution_id, KeyType: HASH }
+      GlobalSecondaryIndexes:
+        - IndexName: owner-created-index
+          KeySchema:
+            - { AttributeName: owner, KeyType: HASH }
+            - { AttributeName: created_at_ms, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+      TimeToLiveSpecification: { AttributeName: expires_at, Enabled: true }
+      PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
+      SSESpecification: { SSEEnabled: true }
+      Tags:
+        - { Key: Project, Value: ChronosMesh }
+        - { Key: Environment, Value: !Ref Environment }
+
+  EventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub chronosmesh-${Environment}-events
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: execution_id, AttributeType: S }
+        - { AttributeName: event_id, AttributeType: S }
+        - { AttributeName: service_id, AttributeType: S }
+        - { AttributeName: event_time_ms, AttributeType: N }
+      KeySchema:
+        - { AttributeName: execution_id, KeyType: HASH }
+        - { AttributeName: event_id, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: service-time-index
+          KeySchema:
+            - { AttributeName: service_id, KeyType: HASH }
+            - { AttributeName: event_time_ms, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+      TimeToLiveSpecification: { AttributeName: expires_at, Enabled: true }
+      PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
+      SSESpecification: { SSEEnabled: true }
+      Tags:
+        - { Key: Project, Value: ChronosMesh }
+        - { Key: Environment, Value: !Ref Environment }
+
+  AnomaliesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub chronosmesh-${Environment}-anomalies
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: execution_id, AttributeType: S }
+        - { AttributeName: anomaly_id, AttributeType: S }
+      KeySchema:
+        - { AttributeName: execution_id, KeyType: HASH }
+        - { AttributeName: anomaly_id, KeyType: RANGE }
+      TimeToLiveSpecification: { AttributeName: expires_at, Enabled: true }
+      PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
+      SSESpecification: { SSEEnabled: true }
+      Tags:
+        - { Key: Project, Value: ChronosMesh }
+        - { Key: Environment, Value: !Ref Environment }
+
+  GraphsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub chronosmesh-${Environment}-causal-graphs
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: graph_id, AttributeType: S }
+      KeySchema:
+        - { AttributeName: graph_id, KeyType: HASH }
+      TimeToLiveSpecification: { AttributeName: expires_at, Enabled: true }
+      PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
+      SSESpecification: { SSEEnabled: true }
+      Tags:
+        - { Key: Project, Value: ChronosMesh }
+        - { Key: Environment, Value: !Ref Environment }
+
+  # ── S3 ────────────────────────────────────────────────────────────────────────
+  DataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub chronosmesh-${Environment}-data-${AWS::AccountId}
+      VersioningConfiguration: { Status: Enabled }
+      OwnershipControls:
+        Rules: [{ ObjectOwnership: BucketOwnerEnforced }]
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+            BucketKeyEnabled: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-executions
+            Status: Enabled
+            Prefix: executions/
+            ExpirationInDays: !Ref ExecutionTtlDays
+            NoncurrentVersionExpiration: { NoncurrentDays: 7 }
+            AbortIncompleteMultipartUpload: { DaysAfterInitiation: 1 }
+          - Id: expire-noncurrent
+            Status: Enabled
+            NoncurrentVersionExpiration: { NoncurrentDays: 7 }
+            AbortIncompleteMultipartUpload: { DaysAfterInitiation: 1 }
+      Tags:
+        - { Key: Project, Value: ChronosMesh }
+        - { Key: Environment, Value: !Ref Environment }
+
+  DataBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref DataBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource: [!GetAtt DataBucket.Arn, !Sub "${DataBucket.Arn}/*"]
+            Condition: { Bool: { "aws:SecureTransport": "false" } }
+
+  # ── SQS ───────────────────────────────────────────────────────────────────────
+  EventsDlq:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub chronosmesh-${Environment}-events-dlq
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+      Tags:
+        - { Key: Project, Value: ChronosMesh }
+        - { Key: Environment, Value: !Ref Environment }
+
+  EventsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub chronosmesh-${Environment}-events
+      VisibilityTimeout: 120
+      MessageRetentionPeriod: 345600
+      ReceiveMessageWaitTimeSeconds: 20
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt EventsDlq.Arn
+        maxReceiveCount: !Ref QueueMaxReceiveCount
+      Tags:
+        - { Key: Project, Value: ChronosMesh }
+        - { Key: Environment, Value: !Ref Environment }
+
+  QueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues: [!Ref EventsQueue, !Ref EventsDlq]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "sqs:*"
+            Resource: "*"
+            Condition: { Bool: { "aws:SecureTransport": "false" } }
+
+  # ── SNS (alarms, budget, ECS task failures) ───────────────────────────────────
+  AlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub chronosmesh-${Environment}-alerts
+      Tags:
+        - { Key: Project, Value: ChronosMesh }
+        - { Key: Environment, Value: !Ref Environment }
+
+  AlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlertEmail
+    Properties:
+      TopicArn: !Ref AlertsTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  AlertsTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics: [!Ref AlertsTopic]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowAlarmsBudgetsAndEvents
+            Effect: Allow
+            Principal:
+              Service: [cloudwatch.amazonaws.com, budgets.amazonaws.com, events.amazonaws.com]
+            Action: sns:Publish
+            Resource: !Ref AlertsTopic
+            Condition:
+              StringEquals: { "aws:SourceAccount": !Ref "AWS::AccountId" }
+
+  # ── Secrets Manager (generated; never in Git) ─────────────────────────────────
+  JwtSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub chronosmesh/${Environment}/jwt-secret
+      Description: HS256 signing key for ChronosMesh access tokens
+      GenerateSecretString: { PasswordLength: 64, ExcludePunctuation: true }
+      Tags:
+        - { Key: Project, Value: ChronosMesh }
+        - { Key: Environment, Value: !Ref Environment }
+
+  MetricsTokenSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub chronosmesh/${Environment}/metrics-token
+      Description: Bearer token required to scrape /metrics
+      GenerateSecretString: { PasswordLength: 40, ExcludePunctuation: true }
+      Tags:
+        - { Key: Project, Value: ChronosMesh }
+        - { Key: Environment, Value: !Ref Environment }
+
+  AdminPasswordSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub chronosmesh/${Environment}/user-admin
+      Description: Password for the ChronosMesh admin account
+      GenerateSecretString:
+        SecretStringTemplate: '{"username":"admin","role":"admin"}'
+        GenerateStringKey: password
+        PasswordLength: 24
+        ExcludePunctuation: true
+      Tags:
+        - { Key: Project, Value: ChronosMesh }
+        - { Key: Environment, Value: !Ref Environment }
+
+  AnalystPasswordSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub chronosmesh/${Environment}/user-analyst
+      Description: Password for the ChronosMesh analyst account
+      GenerateSecretString:
+        SecretStringTemplate: '{"username":"analyst","role":"analyst"}'
+        GenerateStringKey: password
+        PasswordLength: 24
+        ExcludePunctuation: true
+      Tags:
+        - { Key: Project, Value: ChronosMesh }
+        - { Key: Environment, Value: !Ref Environment }
+
+  ViewerPasswordSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub chronosmesh/${Environment}/user-viewer
+      Description: Password for the ChronosMesh read-only account
+      GenerateSecretString:
+        SecretStringTemplate: '{"username":"viewer","role":"viewer"}'
+        GenerateStringKey: password
+        PasswordLength: 24
+        ExcludePunctuation: true
+      Tags:
+        - { Key: Project, Value: ChronosMesh }
+        - { Key: Environment, Value: !Ref Environment }
+
+  GrafanaAdminSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub chronosmesh/${Environment}/grafana-admin
+      Description: Grafana admin password
+      GenerateSecretString:
+        SecretStringTemplate: '{"username":"admin"}'
+        GenerateStringKey: password
+        PasswordLength: 24
+        ExcludePunctuation: true
+      Tags:
+        - { Key: Project, Value: ChronosMesh }
+        - { Key: Environment, Value: !Ref Environment }
+
+  OriginVerifySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub chronosmesh/${Environment}/origin-verify
+      Description: Shared secret CloudFront sends to the ALB (X-Origin-Verify) so the ALB only serves CloudFront
+      GenerateSecretString:
+        SecretStringTemplate: "{}"
+        GenerateStringKey: token
+        PasswordLength: 40
+        ExcludePunctuation: true
+      Tags:
+        - { Key: Project, Value: ChronosMesh }
+        - { Key: Environment, Value: !Ref Environment }
+
+  # ── ECR ───────────────────────────────────────────────────────────────────────
+  ApiRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub chronosmesh-${Environment}/api
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration: { ScanOnPush: true }
+      EncryptionConfiguration: { EncryptionType: AES256 }
+      LifecyclePolicy:
+        LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"keep last 10","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":10},"action":{"type":"expire"}}]}'
+      Tags:
+        - { Key: Project, Value: ChronosMesh }
+        - { Key: Environment, Value: !Ref Environment }
+
+  WorkerRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub chronosmesh-${Environment}/worker
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration: { ScanOnPush: true }
+      EncryptionConfiguration: { EncryptionType: AES256 }
+      LifecyclePolicy:
+        LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"keep last 10","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":10},"action":{"type":"expire"}}]}'
+      Tags:
+        - { Key: Project, Value: ChronosMesh }
+        - { Key: Environment, Value: !Ref Environment }
+
+  GrafanaRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub chronosmesh-${Environment}/grafana
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration: { ScanOnPush: true }
+      EncryptionConfiguration: { EncryptionType: AES256 }
+      LifecyclePolicy:
+        LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"keep last 10","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":10},"action":{"type":"expire"}}]}'
+      Tags:
+        - { Key: Project, Value: ChronosMesh }
+        - { Key: Environment, Value: !Ref Environment }
+
+Outputs:
+  Environment: { Value: !Ref Environment, Export: { Name: !Sub "${AWS::StackName}-Environment" } }
+  ExecutionsTableName: { Value: !Ref ExecutionsTable, Export: { Name: !Sub "${AWS::StackName}-ExecutionsTable" } }
+  EventsTableName: { Value: !Ref EventsTable, Export: { Name: !Sub "${AWS::StackName}-EventsTable" } }
+  AnomaliesTableName: { Value: !Ref AnomaliesTable, Export: { Name: !Sub "${AWS::StackName}-AnomaliesTable" } }
+  GraphsTableName: { Value: !Ref GraphsTable, Export: { Name: !Sub "${AWS::StackName}-GraphsTable" } }
+  TableArns:
+    Value: !Join [",", [!GetAtt ExecutionsTable.Arn, !GetAtt EventsTable.Arn, !GetAtt AnomaliesTable.Arn, !GetAtt GraphsTable.Arn]]
+    Export: { Name: !Sub "${AWS::StackName}-TableArns" }
+  DataBucketName: { Value: !Ref DataBucket, Export: { Name: !Sub "${AWS::StackName}-DataBucket" } }
+  DataBucketArn: { Value: !GetAtt DataBucket.Arn, Export: { Name: !Sub "${AWS::StackName}-DataBucketArn" } }
+  EventsQueueUrl: { Value: !Ref EventsQueue, Export: { Name: !Sub "${AWS::StackName}-EventsQueueUrl" } }
+  EventsQueueArn: { Value: !GetAtt EventsQueue.Arn, Export: { Name: !Sub "${AWS::StackName}-EventsQueueArn" } }
+  EventsQueueName: { Value: !GetAtt EventsQueue.QueueName, Export: { Name: !Sub "${AWS::StackName}-EventsQueueName" } }
+  EventsDlqName: { Value: !GetAtt EventsDlq.QueueName, Export: { Name: !Sub "${AWS::StackName}-EventsDlqName" } }
+  AlertsTopicArn: { Value: !Ref AlertsTopic, Export: { Name: !Sub "${AWS::StackName}-AlertsTopicArn" } }
+  JwtSecretArn: { Value: !Ref JwtSecret, Export: { Name: !Sub "${AWS::StackName}-JwtSecretArn" } }
+  MetricsTokenSecretArn: { Value: !Ref MetricsTokenSecret, Export: { Name: !Sub "${AWS::StackName}-MetricsTokenSecretArn" } }
+  AdminPasswordSecretArn: { Value: !Ref AdminPasswordSecret, Export: { Name: !Sub "${AWS::StackName}-AdminSecretArn" } }
+  AnalystPasswordSecretArn: { Value: !Ref AnalystPasswordSecret, Export: { Name: !Sub "${AWS::StackName}-AnalystSecretArn" } }
+  ViewerPasswordSecretArn: { Value: !Ref ViewerPasswordSecret, Export: { Name: !Sub "${AWS::StackName}-ViewerSecretArn" } }
+  GrafanaAdminSecretArn: { Value: !Ref GrafanaAdminSecret, Export: { Name: !Sub "${AWS::StackName}-GrafanaSecretArn" } }
+  OriginVerifySecretArn: { Value: !Ref OriginVerifySecret, Export: { Name: !Sub "${AWS::StackName}-OriginVerifySecretArn" } }
+  ApiRepositoryUri: { Value: !GetAtt ApiRepository.RepositoryUri, Export: { Name: !Sub "${AWS::StackName}-ApiRepoUri" } }
+  WorkerRepositoryUri: { Value: !GetAtt WorkerRepository.RepositoryUri, Export: { Name: !Sub "${AWS::StackName}-WorkerRepoUri" } }
+  GrafanaRepositoryUri: { Value: !GetAtt GrafanaRepository.RepositoryUri, Export: { Name: !Sub "${AWS::StackName}-GrafanaRepoUri" } }

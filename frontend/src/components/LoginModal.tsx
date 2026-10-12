@@ -3,6 +3,8 @@ import { Icon, LogoMark } from './Icon';
 import { useTilt } from '../fx/hooks';
 
 interface Props {
+  /** Show the one-click demo accounts (only when the server has them enabled). */
+  demoEnabled?: boolean;
   open: boolean;
   loading: boolean;
   error: string | null;
@@ -18,9 +20,9 @@ const ORBS = [
   { c: '#f59bc2', s: 28, x: '48%', y: '8%', d: '-3s' },
 ];
 
-export const LoginModal: React.FC<Props> = ({ open, loading, error, onClose, onSubmit }) => {
-  const [username, setUsername] = useState('guru');
-  const [password, setPassword] = useState('chronosmesh');
+export const LoginModal: React.FC<Props> = ({ open, loading, error, onClose, onSubmit, demoEnabled = false }) => {
+  const [username, setUsername] = useState(demoEnabled ? 'guru' : '');
+  const [password, setPassword] = useState(demoEnabled ? 'chronosmesh' : '');
   const [shake, setShake] = useState(false);
   const tiltRef = useTilt<HTMLDivElement>(4);
 
@@ -84,7 +86,7 @@ export const LoginModal: React.FC<Props> = ({ open, loading, error, onClose, onS
           </button>
         </form>
 
-        <div className="demo-access">
+        {demoEnabled && <div className="demo-access">
           <div className="eyebrow bare">Quick demo access</div>
           <div className="demo-pair">
             <button type="button" className="demo-btn" onClick={() => onSubmit('guru', 'chronosmesh')}>
@@ -96,7 +98,7 @@ export const LoginModal: React.FC<Props> = ({ open, loading, error, onClose, onS
               <span><b>Viewer</b><small>demo</small></span>
             </button>
           </div>
-        </div>
+        </div>}
       </div>
     </div>
   );

@@ -40,9 +40,9 @@ async def graphql_playground(request: Request):
 <head>
   <meta charset="utf-8" />
   <title>ChronosMesh GraphQL Explorer</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/graphql-playground-react/build/static/css/index.css" />
-  <link rel="shortcut icon" href="https://cdn.jsdelivr.net/npm/graphql-playground-react/build/favicon.png" />
-  <script src="https://cdn.jsdelivr.net/npm/graphql-playground-react/build/static/js/middleware.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/graphql-playground-react@1.7.42/build/static/css/index.css" />
+  <link rel="shortcut icon" href="https://cdn.jsdelivr.net/npm/graphql-playground-react@1.7.42/build/favicon.png" />
+  <script src="https://cdn.jsdelivr.net/npm/graphql-playground-react@1.7.42/build/static/js/middleware.js"></script>
   <style>
     body { margin: 0; background: #181E2B; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     #header { padding: 12px 24px; background: #0F131D; color: #fff; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #2B3448; }
@@ -63,16 +63,18 @@ async def graphql_playground(request: Request):
         endpoint: '/graphql',
         settings: {
           'editor.theme': 'dark',
-          'request.credentials': 'include',
+          'request.credentials': 'same-origin',
         },
         tabs: [
           {
             endpoint: '/graphql',
+            headers: { Authorization: 'Bearer <paste the access_token returned by POST /auth/login>' },
             name: 'Causal Ancestors',
             query: '{\\n  ancestors(eventId: "evt-payment-processed") {\\n    event_id\\n    service_id\\n    logical_time\\n  }\\n}',
           },
           {
             endpoint: '/graphql',
+            headers: { Authorization: 'Bearer <paste the access_token returned by POST /auth/login>' },
             name: 'Concurrency & DAG',
             query: '{\\n  concurrency {\\n    scenario\\n    concurrent_pairs\\n  }\\n  dag\\n}',
           }
@@ -89,14 +91,14 @@ async def graphql_playground(request: Request):
 @router.post("/")
 async def execute_graphql(
     body: GraphQLRequest,
-    current_user: Optional[Dict[str, Any]] = None,
+    request: Request,
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ) -> Dict[str, Any]:
-
     """
     Executes GraphQL queries against ChronosMesh Causal Engine and Neo4j.
     Supports querying ancestors, descendants, concurrency, and timeline.
     """
-    store = get_store()
+    store = get_store(request)
     query_str = body.query.strip()
     variables = body.variables or {}
 

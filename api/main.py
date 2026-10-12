@@ -16,11 +16,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, PlainTextResponse, JSONResponse
 
-from api.routers import auth_router, scenarios_router, events_router, dag_router, analysis_router, graphql_router
+from api.routers import (
+    auth_router, scenarios_router, events_router, dag_router, analysis_router, graphql_router,
+    experiments_router, executions_router, system_router,
+)
 from api.metrics import get_prometheus_output, API_REQUESTS, API_REQUEST_DURATION, CONTENT_TYPE_LATEST
 from api.logger import setup_structured_logging
 from api.auth import get_current_user
-from api.store import ChronosMeshStore, get_store
+from api.services.execution_service import ServiceError, get_service
+from api.store import ChronosMeshStore, _username_from_request, get_store
+from chronosmesh.observability.tracing import configure_tracing
 
 # ── Logging Setup ─────────────────────────────────────────────────────────────
 setup_structured_logging(level=logging.INFO)
@@ -59,13 +64,35 @@ REST API layer for the ChronosMesh Distributed Causality Engine.
 )
 
 # ── Secure CORS Configuration ─────────────────────────────────────────────────
+# Explicit allow-list only. Browsers on the same origin (the deployed dashboard is served from the
+# same host as the API) need no CORS at all; extra origins come from CORS_ORIGINS (comma-separated).
+_LOCAL_ORIGINS = [
+    "http://localhost:3000", "http://localhost:5173", "http://localhost:8000",
+    "http://127.0.0.1:3000", "http://127.0.0.1:5173", "http://127.0.0.1:8000",
+]
+
+
+def _cors_origins() -> list:
+    configured = [o.strip().rstrip("/") for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+    if "*" in configured:
+        raise RuntimeError("CORS_ORIGINS must list explicit origins; '*' is not allowed with credentials")
+    if os.getenv("ENVIRONMENT", "local").lower() == "production":
+        return configured
+    return _LOCAL_ORIGINS + configured
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r".*",
+    allow_origins=_cors_origins(),
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["Authorization", "Content-Type"],
 )
+
+
+@app.exception_handler(ServiceError)
+async def service_error_handler(_: Request, exc: ServiceError):
+    return JSONResponse(status_code=exc.status, content={"detail": exc.detail})
 
 
 
@@ -111,6 +138,11 @@ app.include_router(dag_router.router, prefix="/api/dag", tags=["Causal DAG"])
 app.include_router(analysis_router.router, prefix="/api/analysis", tags=["Analysis"])
 app.include_router(graphql_router.router, prefix="/api", tags=["GraphQL"])
 app.include_router(graphql_router.router, prefix="", tags=["GraphQL"])
+app.include_router(experiments_router.router, prefix="/api/experiments", tags=["Experiments"])
+app.include_router(executions_router.router, prefix="/api/executions", tags=["Executions"])
+app.include_router(system_router.router, prefix="/api/system", tags=["System"])
+
+configure_tracing("chronosmesh-api", app)
 
 
 @app.get("/api/clocks/benchmark", tags=["Analysis"])
@@ -177,9 +209,26 @@ def health_check():
     return {"status": "healthy", "service": "chronosmesh-api", "version": "1.0.0"}
 
 
+@app.get("/api/health/ready", tags=["System"])
+def readiness_check():
+    """Readiness: verifies the persistence layer is reachable (used by deployment health gates)."""
+    storage = get_service().repo.health()
+    return JSONResponse(status_code=200 if storage.get("ok") else 503,
+                        content={"status": "ready" if storage.get("ok") else "degraded", "storage": storage})
+
+
+def _require_metrics_token(request: Request) -> None:
+    """If METRICS_TOKEN is set, scrapers must present it (Prometheus ``authorization`` block)."""
+    token = os.getenv("METRICS_TOKEN")
+    if token and request.headers.get("authorization", "") != f"Bearer {token}":
+        from fastapi import HTTPException
+        raise HTTPException(status_code=401, detail="metrics require a bearer token")
+
+
 @app.get("/metrics", tags=["System"], include_in_schema=False)
 def prometheus_metrics(request: Request):
     """Prometheus metrics scraper endpoint returning standard Prometheus text exposition format."""
+    _require_metrics_token(request)
     accept = request.headers.get("accept", "")
     if "application/json" in accept and "text/plain" not in accept:
         return get_metrics_json()
@@ -194,15 +243,22 @@ def api_metrics(request: Request):
     """
     accept = request.headers.get("accept", "")
     if "text/plain" in accept or request.query_params.get("format") == "prometheus":
+        _require_metrics_token(request)
         return Response(content=get_prometheus_output(), media_type=CONTENT_TYPE_LATEST)
-    return get_metrics_json()
+    if not _username_from_request(request):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=401, detail="Could not validate credentials",
+                            headers={"WWW-Authenticate": "Bearer"})
+    return _metrics_payload(get_store(request))
 
 
 @app.get("/api/metrics/json", tags=["System"], include_in_schema=False)
-def get_metrics_json():
+def get_metrics_json(request: Request, _: dict = Depends(get_current_user)):
     """Structured runtime metrics for the dashboard monitoring panels."""
-    from api.store import get_store
-    store = get_store()
+    return _metrics_payload(get_store(request))
+
+
+def _metrics_payload(store: ChronosMeshStore) -> dict:
     return {
         "event_count": len(store.events),
         "dag_nodes": store.dag.number_of_nodes(),

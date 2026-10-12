@@ -1,0 +1,74 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main, master, "stage-*"]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            api/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r api/requirements.txt
+          pip install -e .
+
+      - name: "Lint (correctness rules only - syntax errors, undefined names)"
+        run: |
+          pip install ruff
+          ruff check --select E9,F63,F7,F82 .
+
+      - name: Unit, integration and chaos tests (AWS services are mocked with moto)
+        run: python -m pytest tests -q --cov=chronosmesh --cov=api --cov-report=xml --cov-report=term-missing:skip-covered
+
+      - name: Upload coverage
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+
+  iac:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install cfn-lint
+      - name: Lint CloudFormation templates
+        run: cfn-lint infrastructure/cloudformation/*.yaml
+      - name: Syntax-check deployment scripts
+        run: for f in infrastructure/scripts/*.sh; do bash -n "$f"; done
+
+  observability-configs:
+    # Prometheus rules, Grafana dashboards and compose files must only reference metrics/services that exist.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt -r api/requirements.txt && pip install -e .
+      - run: python -m pytest tests/unit/test_observability_configs.py -q

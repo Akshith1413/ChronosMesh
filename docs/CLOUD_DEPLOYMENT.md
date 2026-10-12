@@ -1,135 +1,127 @@
-# ChronosMesh Stage 5 — Cloud Deployment Architecture & Readiness Plan
+# ChronosMesh — Cloud Deployment (AWS)
 
-## 1. Overview & Cloud Target Architecture
-This document details the production cloud deployment architecture plan for ChronosMesh on Amazon Web Services (AWS) / Google Cloud Platform (GCP).
+This document describes what is **actually deployed** by `infrastructure/` and how to operate it. The earlier version of
+this file was a blueprint for MSK/EKS/Aura that had never been executed; those parts are listed under
+[Not deployed, and why](#not-deployed-and-why).
 
-> [!NOTE]
-> This document specifies the enterprise cloud readiness blueprint and deployment configurations. Local verification runs on Docker and local execution environments.
+Region `ap-south-2` (Hyderabad) · IaC: AWS CloudFormation · two stacks split by lifecycle.
+
+## 1. Architecture
 
 ```mermaid
 flowchart TB
-    subgraph Client Tier
-        Browser[Operator Browser]
-        CF[CloudFront CDN / S3 Bucket - React Dashboard]
-    end
-
-    subgraph Security & Ingress
-        ALB[Application Load Balancer]
-        WAF[AWS WAF / Shield]
-    end
-
-    subgraph Compute Cluster - AWS EKS / ECS Fargate
-        API[FastAPI Container Pods - Multi-AZ]
-        FlinkApp[Apache Flink Application - Streaming Pods]
-    end
-
-    subgraph Managed Cloud Infrastructure
-        MSK[Amazon MSK - Managed Kafka Cluster]
-        Aura[Neo4j AuraDB Enterprise / Managed Graph Cluster]
-        SecretsMgr[AWS Secrets Manager / SSM Parameter Store]
-        AMP[Amazon Managed Prometheus]
-        AMG[Amazon Managed Grafana]
-    end
-
-    Browser --> CF
-    Browser --> WAF --> ALB --> API
-    API --> Aura
-    API --> MSK
-    MSK --> FlinkApp
-    FlinkApp --> Aura
-    FlinkApp --> MSK
-    API -.-> SecretsMgr
-    API -.-> AMP
-    FlinkApp -.-> AMP
-    AMP --> AMG
+    U[Browser] -->|HTTPS| CF[CloudFront]
+    CF -->|"/ , /assets/*"| S3F[(S3 front end, private, OAC)]
+    CF -->|"/api /auth /graphql /docs /grafana<br/>+ secret X-Origin-Verify header"| ALB[Application Load Balancer<br/>only from CloudFront prefix list]
+    ALB --> API[ECS Fargate: API<br/>FastAPI + React + ADOT sidecar]
+    ALB --> GRAF[ECS Fargate: Grafana<br/>CloudWatch data source]
+    API -->|publish events| SQS[(SQS events queue)]
+    SQS -->|after 5 failed receives| DLQ[(Dead-letter queue)]
+    SQS --> W[ECS Fargate: Worker<br/>reconstruction engine]
+    W -->|segment log BEFORE ack| S3D[(S3 data bucket)]
+    W --> DDB[(DynamoDB: executions, events,<br/>anomalies, causal-graphs)]
+    API --> DDB
+    API --> S3D
+    API -.->|traces| XR[AWS X-Ray]
+    W -.->|custom metrics| CW[CloudWatch + Alarms + Dashboard]
+    CW --> SNS[SNS alerts] --> MAIL[email]
+    EB[EventBridge: task stopped] --> SNS
+    SEC[Secrets Manager] -.-> API
+    SEC -.-> GRAF
 ```
 
----
+Data flow of an experiment with `transport: sqs`: the API simulates the workload and a fault-injected delivery stream,
+keeps the ground truth in S3, publishes the stream to SQS, the worker reconstructs the graphs (writing every message to the
+S3 segment log before acknowledging it) and scores them against the ground truth, then marks the experiment `succeeded`.
 
-## 2. Infrastructure Service Mapping
+## 2. Stacks and resources
 
-| Component | Local / Development Environment | AWS Production Equivalent | GCP Production Equivalent |
-| :--- | :--- | :--- | :--- |
-| **Event Streaming** | Confluent Kafka Docker | **Amazon MSK** (Multi-AZ) | **Google Cloud Pub/Sub** or Confluent Cloud |
-| **Stream Processor**| Apache Flink Docker | **Amazon Managed Service for Flink** (KDA) | **Cloud Dataflow** / Managed Flink on GKE |
-| **Graph Store** | Neo4j Community Docker | **Neo4j AuraDB Enterprise** | **Neo4j AuraDB on GCP Marketplace** |
-| **REST / SSE API** | Uvicorn ASGI Server | **AWS ECS Fargate / EKS** | **Google Cloud Run / GKE** |
-| **Frontend UI** | Vite Dev Server / Nginx | **AWS S3 + CloudFront CDN** | **Google Cloud Storage + Cloud CDN** |
-| **Telemetry** | Local Prometheus & Grafana | **Amazon Managed Prometheus + Grafana** | **Google Cloud Monitoring + Managed Grafana** |
-| **Secrets** | Local `.env` (gitignored) | **AWS Secrets Manager** | **GCP Secret Manager** |
+### `chronosmesh-<env>-data` (long-lived — `infrastructure/cloudformation/data.yaml`)
 
----
+| Resource | Configuration |
+|---|---|
+| DynamoDB ×4 (`executions`, `events`, `anomalies`, `causal-graphs`) | On-demand, **TTL** (`expires_at`), **point-in-time recovery**, SSE; GSIs `owner-created-index` (executions) and `service-time-index` (events) |
+| S3 data bucket | Private, versioned, SSE-S3, TLS-only policy, lifecycle (30 days for `executions/`, 7 days for old versions) |
+| SQS events queue + DLQ | SSE-SQS, long polling, 120 s visibility timeout, **redrive after 5 receives** to a 14-day DLQ, TLS-only |
+| SNS alerts topic | Policy allows CloudWatch, Budgets and EventBridge; email subscription (confirm the link AWS sends) |
+| Secrets Manager ×7 | Generated JWT key, metrics token, `admin`/`analyst`/`viewer`/Grafana passwords, CloudFront↔ALB shared secret |
+| ECR ×3 | `chronosmesh-<env>/{api,worker,grafana}`: immutable tags, scan-on-push, keep last 10 |
 
-## 3. Networking, Security Groups & Ingress Control
+The monthly **budget** (default $100; alerts at 80 % actual and 100 % forecast to the SNS topic) is created by
+`infrastructure/scripts/budget.sh` because `AWS::Budgets::Budget` is not available in this region's CloudFormation.
 
-### 3.1 Network Topology:
-- **VPC Subnets:**
-  - `Public Subnets (x2)`: Internet-facing ALB and CloudFront distribution.
-  - `Private App Subnets (x2)`: ECS/EKS tasks running FastAPI backend and Flink workers. No direct public IP.
-  - `Private Data Subnets (x2)`: MSK broker nodes and database endpoints with VPC peering to Neo4j Aura.
+### `chronosmesh-<env>-app` (replaceable — `infrastructure/cloudformation/app.yaml`)
 
-### 3.2 Security Group Rules:
-- **ALB Security Group:** Inbound HTTPS (port 443) from `0.0.0.0/0`. Outbound to ECS Tasks on port 8000.
-- **FastAPI ECS Security Group:** Inbound port 8000 only from ALB SG. Outbound port 9092/29092 to MSK SG and port 7687 to Neo4j Aura.
-- **MSK Broker Security Group:** Inbound TLS port 9094 only from FastAPI SG and Flink SG.
-- **Prometheus Scraper:** Scrapes metrics internally over VPC via private IP addresses.
+| Resource | Configuration |
+|---|---|
+| ECS cluster + 3 Fargate services | **API** (512 CPU / 2 GB, autoscaling 1–3 on CPU 60 %, ADOT tracing sidecar), **Worker** (256 / 1 GB, exactly one consumer), **Grafana** (256 / 512 MB, stateless, provisioned). Deployment circuit breaker with automatic rollback; tasks run non-root with a read-only root filesystem |
+| ALB | Internet-facing but its security group admits **only CloudFront's origin-facing prefix list**, and listener rules require the secret `X-Origin-Verify` header; default action is 403. Cookie stickiness for the API (explorer state is per replica) |
+| CloudFront + S3 | React build in a private bucket via **Origin Access Control**; `/api/*`, `/auth/*`, `/graphql*`, `/docs*`, `/redoc*`, `/openapi.json`, `/grafana/*` go to the ALB uncached; HTTPS redirect; managed security-headers policy; HTTP/2+3 |
+| IAM | Execution role (ECR/logs + the six secrets) and **one task role per workload**, scoped to named tables/indexes, `executions/*` objects, the one queue; `PutMetricData` limited to the `ChronosMesh` namespace |
+| CloudWatch | 8 alarms (API unhealthy targets / 5xx / CPU, **worker heartbeat missing**, queue backlog age, **DLQ not empty**, processing errors, unresolved dependencies), a dashboard, log groups with 30-day retention |
+| EventBridge | Rule: ECS task stopped with `TaskFailedToStart`/`EssentialContainerExited` → SNS |
 
----
+## 3. Deploy, operate, destroy
 
-## 4. Autoscaling & High Availability
+Prerequisites: AWS CLI v2-compatible credentials with permission to create the above, Docker, `curl`.
 
-### 4.1 FastAPI Backend (Stateless):
-- **Horizontal Pod Autoscaler (HPA):** Scales between 2 and 10 replicas based on:
-  - Average CPU utilization $> 70\%$
-  - Average HTTP request count per target $> 1,000\text{ req/min}$
-- **Zero-Downtime Rolling Updates:** Maximum surge 25%, maximum unavailable 0%.
-
-### 4.2 Flink Streaming Workers:
-- **Adaptive Task Slots:** Scale based on Kafka partition lag metrics exposed to Prometheus.
-- **Savepointing:** Hourly automated checkpoints to Amazon S3 for state durability.
-
----
-
-## 5. Cost Considerations & Sizing Estimates
-
-| Service | Tier / Instance Size | Monthly Cost Estimate (US-East) |
-| :--- | :--- | :--- |
-| **Amazon MSK** | 3 x `kafka.m5.large` (3 AZs) | ~$450 |
-| **AWS ECS Fargate (API)** | 2 tasks (1 vCPU, 2GB RAM) | ~$75 |
-| **Managed Flink (KDA)** | 2 KPUs (Kinesis Processing Units) | ~$160 |
-| **Neo4j AuraDB Enterprise** | 8GB RAM Instance | ~$400 |
-| **S3 + CloudFront (Frontend)**| 100 GB transfer | ~$15 |
-| **Prometheus / Grafana** | Managed ingestion (~5M metrics) | ~$25 |
-| **Total Estimated Run-Rate** | | **~$1,125 / month** |
-
-*Note: For lower-tier staging environments, single-node Neo4j and self-hosted Kafka on EC2 reduces cost to <$150/month.*
-
----
-
-## 6. Step-by-Step Deployment & Rollback Strategy
-
-### Step 1: Deploy Data Layer
-1. Provision Neo4j AuraDB instance; execute schema initialization (`chronosmesh/storage/neo4j_store.py`).
-2. Provision MSK cluster; create topics `events.raw` and `events.causal` with 6 partitions each.
-
-### Step 2: Build & Push Images
 ```bash
-# Build production Docker image
-docker build -f api/Dockerfile -t <ECR_REPO_URL>/chronosmesh-api:v1.0.0 .
-aws ecr get-login-password | docker login --username AWS --password-stdin <ECR_REPO_URL>
-docker push <ECR_REPO_URL>/chronosmesh-api:v1.0.0
+# first deployment or any update (idempotent): builds + pushes images, deploys both stacks, publishes the front end
+ALERT_EMAIL=you@example.com BUDGET_USD=100 ./infrastructure/scripts/deploy.sh
+
+./infrastructure/scripts/credentials.sh --show   # sign-in passwords for admin / analyst / viewer (generated, never in Git)
+./infrastructure/scripts/scale.sh down           # stop all compute when not demoing (ALB/CloudFront still bill a little)
+./infrastructure/scripts/scale.sh up             # bring it back (~2 min)
+./infrastructure/scripts/destroy.sh              # remove the application stack, keep the data
+./infrastructure/scripts/destroy.sh --include-data
 ```
 
-### Step 3: Deploy Frontend to S3/CloudFront
-```bash
-cd frontend
-npm ci && npm run build
-aws s3 sync dist/ s3://<FRONTEND_S3_BUCKET>/ --delete
-aws cloudfront create-invalidation --distribution-id <CF_DIST_ID> --paths "/*"
-```
+`SKIP_BUILD=1 IMAGE_TAG=<tag>` redeploys images that are already in ECR. CI: `.github/workflows/deploy.yml` (manual) does the
+same through GitHub OIDC without long-lived keys once the role in `infrastructure/cloudformation/github-oidc.yaml` exists.
 
-### Step 4: Blue/Green Rollback Strategy
-- CloudFormation / Terraform templates version all infrastructure.
-- In case of deployment regression:
-  1. Switch ALB traffic target group back to the previous Blue task set (`< 30 seconds`).
-  2. Invalidate CloudFront cache to point to previous S3 version directory.
+### Smoke test (what `deploy.sh` runs)
+`GET /api/health`, `GET /api/health/ready` (checks DynamoDB + S3), and the front end through CloudFront. Then log in as
+`analyst` and run an experiment with `transport: sqs` from the **Experiment Lab** to exercise API → SQS → worker → DynamoDB/S3.
+
+### Acceptance test
+`python infrastructure/scripts/verify_deployment.py` runs 50 checks against the live environment (security edge, an in-process experiment, an
+experiment through SQS and the worker, live ingest, authorisation, DynamoDB/S3/CloudWatch/X-Ray/SNS/ECS state, Grafana). It last passed 50/50 on
+2026-10-13 against `https://d3aaa3amvwsyjx.cloudfront.net`.
+
+## 4. Cost (rough, ap-south-2, running 24×7)
+
+| Item | ≈ USD / month |
+|---|---|
+| Fargate API (0.5 vCPU / 2 GB) | 24 |
+| Fargate worker (0.25 vCPU / 1 GB) | 11 |
+| Fargate Grafana (0.25 vCPU / 0.5 GB) | 9 |
+| Application Load Balancer + public IPv4 addresses (ALB ×2–3, tasks ×3) | 28–32 |
+| CloudFront, S3, DynamoDB (on-demand), SQS, SNS, Secrets (7 × $0.40), CloudWatch alarms/dashboard | 8–15 |
+| **Total** | **≈ 80–90** |
+
+`scale.sh down` removes the Fargate share (~$44) and the task IPv4 charges; set a lower `MonthlyBudgetUsd`/`BUDGET_USD` to be warned earlier.
+Public IPv4 addresses are billed hourly since 2024; a NAT gateway (≈ $35+/month) was deliberately **not** used.
+
+## 5. Not deployed, and why
+
+| Blueprint item | Status |
+|---|---|
+| **Amazon MSK / Kinesis / Managed Flink** | **Blocked by the account**: the API returns `SubscriptionRequiredException` (free-tier restriction). SQS is the transport; Kafka/Flink code paths exist and run locally (`docker compose --profile full`). Moving to MSK needs a paid plan and a `KafkaTransport` beside `SqsTransport`. |
+| API Gateway + Cognito | The API authenticates with its own JWT/RBAC behind CloudFront; adding API Gateway would duplicate the CloudFront/ALB path without a new capability. |
+| AWS WAF | Cost (~$6+/month); recommended before exposing the site to untrusted traffic (managed rule groups on the CloudFront distribution). |
+| Step Functions | Experiments are bounded single jobs; there is no multi-step workflow to orchestrate. |
+| EKS, ElastiCache, RDS, Managed Prometheus/Grafana | Optional/advanced in the blueprint; `k8s/` manifests are provided but not applied. Grafana runs as a Fargate task against CloudWatch; Prometheus runs locally in `docker compose`. |
+| Custom domain + ACM | Needs a domain you own; until then CloudFront ↔ ALB is HTTP (restricted by prefix list + secret header). |
+| Multi-region / GCP | Single region; the multi-cloud aspect is simulated by the workload generator (AWS/GCP region labels and per-service clock skew). |
+
+## 6. Legacy resources from the original hand-built deployment
+
+These pre-date the IaC and are **not managed by it**; they are left untouched so nothing you rely on breaks. Recommended clean-up
+once you have verified the new stack:
+
+* EC2 `ChronosMesh-Server` (t3.small, `18.61.252.175`) running the old API over HTTP with the default demo credentials, and a second
+  EC2 (t3.micro) that answers on no port — both cost money and the first is publicly open.
+* Security group `chronosmesh-sg` allows **all traffic from 0.0.0.0/0** (plus SSH, 3000, 9090) and `launch-wizard-1` exposes 22/8000.
+* IAM roles `chronosmesh-ecs-task-role` (SQS/DynamoDB/S3/CloudWatch *FullAccess*) and `chronosmesh-ecs-execution-role`.
+* Empty hand-made tables/queues/buckets/repos named `chronosmesh-*` (no `-prod-`), the empty ECS cluster `chronosmesh-cluster`,
+  task definition `chronosmesh-api:1`, and the user-data script `infrastructure/userdata.sh` (superseded by `deploy.sh`).

@@ -206,7 +206,9 @@ def test_e2e_streaming_pipeline_to_fastapi_and_sse(mock_cluster, api_client):
     assert "edges" in dag_data
 
     # Verify SSE endpoint responds with stream headers
-    stream_resp = api_client.get("/api/events/stream?limit=2")
+    assert api_client.get("/api/events/stream?limit=2").status_code == 401        # unauthenticated: rejected
+    token = headers["Authorization"].split()[1]
+    stream_resp = api_client.get(f"/api/events/stream?limit=2&token={token}")
     assert stream_resp.status_code == 200
     assert "text/event-stream" in stream_resp.headers["content-type"]
 

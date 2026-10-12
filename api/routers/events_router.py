@@ -2,11 +2,11 @@ import asyncio
 import json
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from api.auth import get_current_user
-from api.store import ChronosMeshStore, get_store
+from api.store import ChronosMeshStore, _username_from_request, get_store
 
 router = APIRouter()
 
@@ -55,6 +55,7 @@ async def get_causal_order(
 
 @router.get("/stream", summary="Live Server-Sent Events (SSE) feed")
 async def event_stream(
+    request: Request,
     token: Optional[str] = Query(None),
     limit: Optional[int] = Query(None),
     store: ChronosMeshStore = Depends(get_store),
@@ -62,8 +63,12 @@ async def event_stream(
     """
     Live Server-Sent Events (SSE) stream for real-time dashboard updates.
     Streams existing arrival events, incoming live events from Kafka/Flink,
-    and periodic heartbeats.
+    and periodic heartbeats. Authenticated: EventSource cannot set headers, so the access token is passed
+    as ``?token=`` (or as a normal Bearer header).
     """
+    if not _username_from_request(request):
+        raise HTTPException(status_code=401, detail="Could not validate credentials",
+                            headers={"WWW-Authenticate": "Bearer"})
     async def event_generator():
         sent_count = 0
         live_queue = asyncio.Queue()
@@ -137,6 +142,5 @@ async def get_event(
         if neo_evt:
             return neo_evt
 
-    from fastapi import HTTPException
     raise HTTPException(status_code=404, detail=f"Event '{event_id}' not found")
 

@@ -176,3 +176,47 @@ From `chronosmesh/events/schemas.py` (`EventSchema` — Pydantic v2):
 | **API response** | `store.get_dag_json()` flattens node properties; API consumers receive `region` and `clock_uncertainty_ms` directly (not nested under `metadata`) |
 | **Frontend** | D3.js DAG viz consumes `{id, service_id, event_type, timestamp_ms, lamport_ts, vector_clock, region}` per node |
 | **Flink/Kafka Streams** | Stream processor in `chronosmesh/stream/processor.py` accepts `Event` objects directly |
+
+
+---
+
+# Published event contract & formal causal rules (added 2026-10-12)
+
+## Contract (`Event.to_spec_dict()` / `Event.from_spec_dict()`)
+
+| Contract field | Internal field | Notes |
+|---|---|---|
+| `event_id` | `event_id` | Globally unique; the **idempotency key** |
+| `execution_id` | `execution_id` | One business flow / experiment run; falls back to `trace_id` |
+| `service` | `service_id` | Emitting service |
+| `event_type` | `event_type` | |
+| `trace_id`, `span_id` | same | OpenTelemetry-style identifiers |
+| `parent_event_ids` | same | Declared direct causes |
+| `lamport_clock` | `lamport_ts` | |
+| `vector_clock` | `vector_clock` | `{service: counter}`; each service increments only its own entry |
+| `event_time` (ISO-8601 UTC) | `timestamp_ms` | When it happened at the producer — **subject to clock skew** |
+| `ingestion_time` (ISO-8601 UTC) | `arrival_time_ms` | When the platform received it — assigned by the platform |
+
+`Event.from_dict` accepts both naming styles, so existing producers keep working.
+
+## Causal rules the engine applies
+
+Let `a` and `b` be events with vector clocks `V_a`, `V_b` and `s_a` the service of `a`.
+
+1. **Happens-before:** `a → b  ⇔  V_a ≤ V_b componentwise and V_a ≠ V_b`. Equivalent test used by the engine: `V_b[s_a] ≥ V_a[s_a]`.
+2. **Concurrency:** `a ∥ b  ⇔  ¬(a → b) ∧ ¬(b → a)`. Total-order approaches (arrival order, wall clock) cannot express this.
+3. **Edges are covering relations:** the graph contains an edge `x → b` iff `x → b` and no known `y` has `x → y → b`
+   (transitive reduction). For each service only the latest seen event can be a direct predecessor, giving
+   `O(events × services)` candidates.
+4. **Verified declarations:** a declared parent is accepted only if `V_parent ≤ V_child`; otherwise it is rejected and reported
+   as `CAUSAL_VIOLATION` — no edge is created from contradicted metadata.
+5. **Unresolved dependencies:** a declared parent that has not been observed is recorded (`UNRESOLVED_PARENT`), never
+   invented; when it arrives later the link appears automatically (the result is independent of arrival order).
+6. **Lost events:** if an event of service `s` was lost, an edge bridging the hole is created from clocks and flagged
+   `inferred=true, via_gap=true`.
+7. **Idempotence:** duplicate `event_id`s are ignored after the first delivery and counted (`DUPLICATE_EVENT`).
+8. **Acyclicity:** the graph must be a DAG; an edge that would close a cycle is dropped and reported.
+9. **Missing clocks:** events without a vector clock fall back to their declared parents (marked `verified=false`); Lamport
+   time alone can order but cannot prove concurrency.
+
+Wall-clock timestamps are never used to create edges — only to detect `TIME_INVERSION` and `CLOCK_DRIFT`.

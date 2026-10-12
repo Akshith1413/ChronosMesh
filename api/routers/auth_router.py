@@ -9,10 +9,17 @@ from api.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     authenticate_user,
     create_access_token,
+    demo_users_enabled,
     get_current_user,
 )
 
 router = APIRouter()
+
+
+@router.get("/config", summary="Public sign-in configuration (no secrets)")
+async def auth_config():
+    """Lets the UI hide one-click demo logins on deployments where demo accounts are disabled."""
+    return {"demo_users_enabled": demo_users_enabled()}
 
 
 @router.post("/login", summary="Login and obtain JWT token")

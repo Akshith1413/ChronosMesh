@@ -1,0 +1,21 @@
+# Non-secret configuration. Secrets live in `chronosmesh-secrets` (see secret.example.yaml).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chronosmesh-config
+  labels: { app: chronosmesh }
+data:
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "INFO"
+  ENABLE_DEMO_USERS: "false"
+  AWS_REGION: "ap-south-2"
+  INGEST_MODE: "queue"
+  # Replace with the real resource names/URLs of your deployment:
+  DYNAMODB_EXEC_TABLE: "chronosmesh-prod-executions"
+  DYNAMODB_EVENTS_TABLE: "chronosmesh-prod-events"
+  DYNAMODB_ANOMALY_TABLE: "chronosmesh-prod-anomalies"
+  DYNAMODB_GRAPH_TABLE: "chronosmesh-prod-causal-graphs"
+  S3_DATA_BUCKET: "chronosmesh-prod-data"
+  SQS_EVENTS_QUEUE_URL: "https://sqs.ap-south-2.amazonaws.com/ACCOUNT_ID/chronosmesh-prod-events"
+  CORS_ORIGINS: ""            # explicit origins only; the dashboard is served same-origin
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:4318"

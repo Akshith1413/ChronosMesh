@@ -1,0 +1,94 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Optional: lets the GitHub Actions deploy workflow assume an AWS role through OIDC (no stored access keys).
+  Only the configured repository's main branch can assume it. The role is limited to the services the two stacks
+  use and to IAM roles named chronosmesh-*, but most statements use Resource "*" -- narrow them to explicit ARNs
+  before using this in a stricter environment.
+
+Parameters:
+  GitHubRepo:
+    Type: String
+    Default: Akshith1413/ChronosMesh
+    Description: owner/repository allowed to assume the role.
+  Branch:
+    Type: String
+    Default: main
+  CreateOidcProvider:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Set to false if the account already has the token.actions.githubusercontent.com provider.
+  ExistingOidcProviderArn:
+    Type: String
+    Default: ""
+
+Conditions:
+  CreateProvider: !Equals [!Ref CreateOidcProvider, "true"]
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+      ThumbprintList: [6938fd4d98bab03faadb97b34396831e3780aea1]
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: chronosmesh-github-deploy
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If [CreateProvider, !Ref GitHubOidcProvider, !Ref ExistingOidcProviderArn]
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                "token.actions.githubusercontent.com:aud": sts.amazonaws.com
+                "token.actions.githubusercontent.com:sub": !Sub "repo:${GitHubRepo}:ref:refs/heads/${Branch}"
+      Policies:
+        - PolicyName: deploy-chronosmesh
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ServicesUsedByTheStacks
+                Effect: Allow
+                Action:
+                  - cloudformation:*
+                  - ecs:*
+                  - elasticloadbalancing:*
+                  - application-autoscaling:*
+                  - cloudfront:*
+                  - logs:*
+                  - cloudwatch:*
+                  - events:*
+                  - sns:*
+                  - sqs:*
+                  - dynamodb:*
+                  - secretsmanager:*
+                  - ecr:*
+                  - s3:*
+                Resource: "*"
+                Condition:
+                  StringLikeIfExists:
+                    "aws:ResourceTag/Project": ChronosMesh
+              - Sid: Discovery
+                Effect: Allow
+                Action: [ec2:Describe*, ec2:CreateSecurityGroup, ec2:DeleteSecurityGroup, ec2:AuthorizeSecurityGroup*,
+                         ec2:RevokeSecurityGroup*, ec2:CreateTags, ec2:DeleteTags, ecr:GetAuthorizationToken, sts:GetCallerIdentity, budgets:*]
+                Resource: "*"
+              - Sid: RolesForTheStacks
+                Effect: Allow
+                Action: [iam:CreateRole, iam:DeleteRole, iam:GetRole, iam:PassRole, iam:PutRolePolicy, iam:DeleteRolePolicy,
+                         iam:GetRolePolicy, iam:AttachRolePolicy, iam:DetachRolePolicy, iam:TagRole, iam:UntagRole,
+                         iam:CreateServiceLinkedRole]
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/chronosmesh-*"
+
+Outputs:
+  RoleArn:
+    Description: Set this as the GitHub repository variable AWS_ROLE_ARN
+    Value: !GetAtt DeployRole.Arn

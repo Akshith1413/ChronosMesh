@@ -45,8 +45,10 @@ def test_metrics_endpoints():
     assert res_text.status_code == 200
     assert "chronosmesh_events_received_total" in res_text.text
 
-    # /api/metrics: JSON dashboard summary
-    res_json = client.get("/api/metrics")
+    # /api/metrics: JSON dashboard summary (requires authentication: it exposes the caller's explorer state)
+    assert client.get("/api/metrics").status_code == 401
+    login = client.post("/auth/login", data={"username": "guru", "password": "chronosmesh"})
+    res_json = client.get("/api/metrics", headers={"Authorization": f"Bearer {login.json()['access_token']}"})
     assert res_json.status_code == 200
     data = res_json.json()
     assert "event_count" in data

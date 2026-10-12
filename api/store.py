@@ -9,9 +9,11 @@ Provides seamless dual-mode state management:
 import sys
 import os
 import logging
+import threading
 from typing import Any, Callable, Dict, List, Optional, Set
 
 import networkx as nx
+from fastapi import Request
 
 # Ensure project root on path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -37,18 +39,23 @@ def _extract_uncertainty(metadata_val) -> float:
 
 
 class ChronosMeshStore:
-    """Dual-mode state store for ChronosMesh API sessions."""
+    """Dual-mode state store for ChronosMesh API sessions.
 
-    def __init__(self) -> None:
-        self.data_source: str = os.getenv("DATA_SOURCE", "demo").lower()
+    ``isolated=True`` creates a private, in-memory store for one user (used when a user opens one of their
+    own executions in the Trace Explorer) so that no other user can read it through the legacy endpoints.
+    """
+
+    def __init__(self, isolated: bool = False) -> None:
+        self.isolated = isolated
+        self.data_source: str = "demo" if isolated else os.getenv("DATA_SOURCE", "demo").lower()
         self.events: List[Event] = []
         self.arrival_order: List[str] = []   # event_ids as they "arrived"
         self._builder = CausalDAGBuilder()
         self.dag: nx.DiGraph = nx.DiGraph()
         self.current_scenario: Optional[str] = None
         
-        # Neo4j persistence layer
-        self.neo4j = Neo4jStore()
+        # Neo4j persistence layer (isolated stores never touch the shared graph database)
+        self.neo4j = Neo4jStore(force_in_memory=True) if isolated else Neo4jStore()
 
         # Listeners for real-time SSE event dispatching
         self._event_listeners: List[Callable[[Dict[str, Any]], None]] = []
@@ -190,6 +197,24 @@ class ChronosMeshStore:
         except Exception:
             return []
 
+    def get_causal_order(self) -> List[Dict[str, Any]]:
+        """Events in reconstructed (topological) causal order."""
+        by_id = {e.event_id: e.to_dict() for e in self.events}
+        return [by_id[eid] for eid in self._safe_topo() if eid in by_id]
+
+    def get_concurrency_pairs(self, limit: int = 1000) -> List[List[str]]:
+        """Unordered pairs of events with no causal path between them (E_a || E_b)."""
+        ids = list(self.dag.nodes)
+        reach = {n: nx.descendants(self.dag, n) for n in ids}
+        pairs: List[List[str]] = []
+        for i, a in enumerate(ids):
+            for b in ids[i + 1:]:
+                if b not in reach[a] and a not in reach[b]:
+                    pairs.append([a, b])
+                    if len(pairs) >= limit:
+                        return pairs
+        return pairs
+
     # ── Graph Traversal Helpers (Neo4j / NetworkX) ──────────────────────────────
     def get_ancestors(self, event_id: str) -> List[Dict[str, Any]]:
         """Return causal ancestors of event_id."""
@@ -228,12 +253,49 @@ class ChronosMeshStore:
         return [eid_to_event[eid] for eid in self.dag.nodes if eid not in causal_set and eid in eid_to_event]
 
 
-# ── Singleton ────────────────────────────────────────────────────────────────────
+# ── Stores ───────────────────────────────────────────────────────────────────────
+# One shared demo store (scenario catalogue content, not sensitive) plus a private store per user who has
+# opened one of their own executions. State is per process: behind several replicas the load balancer uses
+# cookie stickiness so a browser keeps talking to the replica that holds its explorer state.
 _store: Optional[ChronosMeshStore] = None
+_user_stores: Dict[str, ChronosMeshStore] = {}
+_stores_lock = threading.Lock()
 
 
-def get_store() -> ChronosMeshStore:
+def _username_from_request(request: Any) -> Optional[str]:
+    """Best-effort identity from the Bearer header or the ``token`` query parameter (EventSource)."""
+    from jose import JWTError, jwt
+
+    from api.auth import ALGORITHM, SECRET_KEY
+
+    token = None
+    header = request.headers.get("authorization", "")
+    if header.lower().startswith("bearer "):
+        token = header[7:]
+    token = token or request.query_params.get("token")
+    if not token:
+        return None
+    try:
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM]).get("sub")
+    except JWTError:
+        return None
+
+
+def user_store(username: str) -> ChronosMeshStore:
+    """The private explorer store for ``username`` (created on first use)."""
+    with _stores_lock:
+        if username not in _user_stores:
+            _user_stores[username] = ChronosMeshStore(isolated=True)
+        return _user_stores[username]
+
+
+def get_store(request: Request = None) -> ChronosMeshStore:
+    """FastAPI dependency: the caller's private store if they have one, else the shared demo store."""
     global _store
+    if request is not None:
+        username = _username_from_request(request)
+        if username and username in _user_stores:
+            return _user_stores[username]
     if _store is None:
         _store = ChronosMeshStore()
     return _store

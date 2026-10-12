@@ -1,0 +1,23 @@
+{
+  "events": [
+    {"event_id": "evt-payment-start", "service": "payment-service", "event_type": "PAYMENT_STARTED",
+     "trace_id": "order-1001", "parent_event_ids": ["evt-order-created"], "lamport_clock": 2,
+     "vector_clock": {"order-service": 1, "payment-service": 1}, "event_time": "2026-10-09T11:00:01Z"},
+    {"event_id": "evt-order-created", "service": "order-service", "event_type": "ORDER_CREATED",
+     "trace_id": "order-1001", "parent_event_ids": [], "lamport_clock": 1,
+     "vector_clock": {"order-service": 1}, "event_time": "2026-10-09T11:00:00Z"},
+    {"event_id": "evt-stock-check", "service": "inventory-service", "event_type": "STOCK_CHECKED",
+     "trace_id": "order-1001", "parent_event_ids": ["evt-order-created"], "lamport_clock": 2,
+     "vector_clock": {"order-service": 1, "inventory-service": 1}, "event_time": "2026-10-09T11:00:01Z"},
+    {"event_id": "evt-payment-done", "service": "payment-service", "event_type": "PAYMENT_COMPLETED",
+     "trace_id": "order-1001", "parent_event_ids": ["evt-payment-start"], "lamport_clock": 3,
+     "vector_clock": {"order-service": 1, "payment-service": 2}, "event_time": "2026-10-09T11:00:02Z"},
+    {"event_id": "evt-stock-reserved", "service": "inventory-service", "event_type": "STOCK_RESERVED",
+     "trace_id": "order-1001", "parent_event_ids": ["evt-stock-check"], "lamport_clock": 3,
+     "vector_clock": {"order-service": 1, "inventory-service": 2}, "event_time": "2026-10-09T11:00:02Z"},
+    {"event_id": "evt-shipping", "service": "shipping-service", "event_type": "SHIPMENT_CREATED",
+     "trace_id": "order-1001", "parent_event_ids": ["evt-payment-done", "evt-stock-reserved"], "lamport_clock": 4,
+     "vector_clock": {"order-service": 1, "payment-service": 2, "inventory-service": 2, "shipping-service": 1},
+     "event_time": "2026-10-09T11:00:03Z"}
+  ]
+}

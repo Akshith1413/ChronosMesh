@@ -11,6 +11,7 @@ import {
   DAGData,
   Event,
   AnomalyReport,
+  Anomaly,
   ConfidenceReport,
   RootCauseResult,
   WhatIfResult,
@@ -23,6 +24,12 @@ import {
   TopologyStatsReport,
   EventReplayReport,
   GraphDiffReport,
+  ExperimentOptions,
+  ExperimentParams,
+  ExecutionRecord,
+  ExperimentResult,
+  ExecutionGraph,
+  SystemStatus,
 } from '../types';
 
 const getApiBase = (): string => {
@@ -124,6 +131,12 @@ class ApiService {
     return data;
   }
 
+  async getAuthConfig(): Promise<{ demo_users_enabled: boolean }> {
+    const response = await fetch(`${API_BASE}/auth/config`);
+    if (!response.ok) return { demo_users_enabled: false };
+    return response.json();
+  }
+
   async getCurrentUser(): Promise<User> {
     return this.request<User>('/auth/me');
   }
@@ -134,6 +147,55 @@ class ApiService {
       window.localStorage?.removeItem('cm_user');
       window.dispatchEvent(new CustomEvent('auth:logout'));
     }
+  }
+
+  // ── Experiments & executions (blueprint API contract) ───────────────────────
+  async getExperimentOptions(): Promise<ExperimentOptions> {
+    return this.request('/api/experiments/options');
+  }
+
+  async createExperiment(params: Partial<ExperimentParams>): Promise<ExecutionRecord> {
+    return this.request('/api/experiments', { method: 'POST', body: JSON.stringify(params) });
+  }
+
+  async startExperiment(id: string): Promise<ExecutionRecord> {
+    return this.request(`/api/experiments/${encodeURIComponent(id)}/start`, { method: 'POST' });
+  }
+
+  async listExperiments(limit = 30): Promise<{ experiments: ExecutionRecord[] }> {
+    return this.request(`/api/experiments?limit=${limit}`);
+  }
+
+  async getExperiment(id: string): Promise<ExecutionRecord> {
+    return this.request(`/api/experiments/${encodeURIComponent(id)}`);
+  }
+
+  async getExperimentResult(id: string): Promise<ExperimentResult> {
+    return this.request(`/api/experiments/${encodeURIComponent(id)}/result`);
+  }
+
+  async getExperimentExecutions(id: string): Promise<{ executions: ExecutionRecord[] }> {
+    return this.request(`/api/experiments/${encodeURIComponent(id)}/executions`);
+  }
+
+  async getExecutionGraph(id: string): Promise<ExecutionGraph> {
+    return this.request(`/api/executions/${encodeURIComponent(id)}/graph`);
+  }
+
+  async getExecutionTruth(id: string): Promise<{ edges: [string, string][] }> {
+    return this.request(`/api/executions/${encodeURIComponent(id)}/truth`);
+  }
+
+  async getExecutionAnomalies(id: string): Promise<{ total: number; by_type: Record<string, number>; anomalies: Anomaly[] }> {
+    return this.request(`/api/executions/${encodeURIComponent(id)}/anomalies`);
+  }
+
+  async exploreExecution(id: string): Promise<{ scenario: string; events: number }> {
+    return this.request(`/api/executions/${encodeURIComponent(id)}/explore`, { method: 'POST' });
+  }
+
+  async getSystemStatus(): Promise<SystemStatus> {
+    return this.request('/api/system/status');
   }
 
   // ── System ──────────────────────────────────────────────────────────────────

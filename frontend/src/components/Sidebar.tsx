@@ -3,7 +3,7 @@ import { User, Scenario } from '../types';
 import { Icon, LogoMark } from './Icon';
 import { getServiceColor } from '../utils/colors';
 
-export type ViewTab = 'overview' | 'dag' | 'timeline' | 'anomaly' | 'whatif' | 'benchmark' | 'analytics' | 'diff' | 'docs';
+export type ViewTab = 'overview' | 'dag' | 'timeline' | 'experiments' | 'anomaly' | 'whatif' | 'benchmark' | 'analytics' | 'diff' | 'observe' | 'docs';
 
 interface SidebarProps {
   currentView: ViewTab;
@@ -30,6 +30,7 @@ const GROUPS: { label: string; items: NavDef[] }[] = [
       { id: 'overview', label: 'Overview', icon: 'overview' },
       { id: 'dag', label: 'Causal DAG', icon: 'dag' },
       { id: 'timeline', label: 'Timeline Replay', icon: 'timeline' },
+      { id: 'experiments', label: 'Experiment Lab', icon: 'flask' },
     ],
   },
   {
@@ -41,6 +42,10 @@ const GROUPS: { label: string; items: NavDef[] }[] = [
       { id: 'analytics', label: 'Analytics', icon: 'analytics' },
       { id: 'diff', label: 'Graph Diff', icon: 'diff' },
     ],
+  },
+  {
+    label: 'Operate',
+    items: [{ id: 'observe', label: 'Observability', icon: 'gauge' }],
   },
   {
     label: 'Architecture',

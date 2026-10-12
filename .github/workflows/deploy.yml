@@ -1,0 +1,46 @@
+name: Deploy to AWS
+
+# Manual deployment through GitHub OIDC: no long-lived AWS keys are stored in GitHub.
+# One-time setup: deploy infrastructure/cloudformation/github-oidc.yaml, then add the repository
+# variable AWS_ROLE_ARN (Settings -> Secrets and variables -> Actions -> Variables).
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment name (suffix of the stack names)
+        default: prod
+      alert_email:
+        description: Email subscribed to the alerts topic (optional)
+        default: ""
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ap-south-2
+
+      - name: Run the test suites first
+        run: |
+          python -m pip install -r requirements.txt -r api/requirements.txt && pip install -e .
+          python -m pytest tests -q -x
+
+      - name: Deploy
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          ALERT_EMAIL: ${{ inputs.alert_email }}
+        run: ./infrastructure/scripts/deploy.sh
