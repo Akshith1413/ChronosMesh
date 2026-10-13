@@ -165,6 +165,7 @@ secrets only in Secrets Manager, non-root read-only containers, private buckets,
 
 | Document | Description |
 |---|---|
+| [`docs/PROJECT_GUIDE.md`](docs/PROJECT_GUIDE.md) | **Start here:** the whole project explained from scratch — problem, theory, every module, how all AWS services connect, security, testing, operations, viva Q&A |
 | [`docs/GAP_ANALYSIS.md`](docs/GAP_ANALYSIS.md) | **Baseline audit** (2026-10-12): everything missing/partial/broken, in the code and in AWS |
 | [`docs/COMPLETION_STATUS.md`](docs/COMPLETION_STATUS.md) | **The same list updated** with what was completed, verification evidence and what remains |
 | [`docs/EVALUATION_RESULTS.md`](docs/EVALUATION_RESULTS.md) | Research evaluation (generated) |
